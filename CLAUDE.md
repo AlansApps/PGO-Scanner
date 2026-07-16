@@ -1,9 +1,9 @@
 # PGO Scanner — project conventions
 
 ## What this is
-A static web app (GitHub Pages) that scans Pokémon GO screenshots to extract
-the Pokémon (name + form), CP and IVs, then derives level and real stats.
-Videos will be supported in v2 (same logic, iterated over frames).
+A static web app (GitHub Pages) that scans Pokémon GO screenshots AND
+screen-recording videos to extract the Pokémon (name + form), CP and IVs,
+then derives level and real stats.
 
 Live site: https://alansapps.github.io/PGO-Scanner/ (served from `main`).
 
@@ -35,6 +35,11 @@ must be checked with the `pogo-auditor` agent (.claude/agents/pogo-auditor.md).
   `CONFIG`/`COLOR` at the top; these get calibrated with real screenshots,
   see CALIBRATION.md).
 - `js/scanner.js` — scan pipeline: decode → IV bars → OCR (Tesseract.js) → parse.
-- `js/app.js` — UI wiring and localStorage collection.
+  Exposes band-OCR helpers (CP band, name band) reused by the video scanner.
+- `js/videoscanner.js` — video pipeline: sample frames → stable IV groups →
+  per-group name/CP OCR with majority voting + plausibility filter →
+  entries reviewed one by one in the UI. IVs always come from the bars
+  (visual); math only validates/derives, never invents values.
+- `js/app.js` — UI wiring, video review queue and localStorage collection.
 - Rule: a value not detected confidently is returned as `null` and shown as a
   BLANK field for manual entry — never guess silently.

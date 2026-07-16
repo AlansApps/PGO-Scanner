@@ -1,7 +1,7 @@
 # PGO Scanner
 
-A mobile-friendly web app that scans **Pokémon GO screenshots** (and later,
-videos) and extracts:
+A mobile-friendly web app that scans **Pokémon GO screenshots and screen-
+recording videos** and extracts:
 
 - **Pokémon** — species name + form/variant (Alolan, Galarian, Hisuian, …),
   disambiguated by the type shown on screen
@@ -25,6 +25,11 @@ Everything runs client-side in the browser — no server, no uploads:
 3. **Math** — level and stats are solved from CP + IVs + base stats
    (`js/calc.js`). Reference data comes from [PogoAPI](https://pogoapi.net)
    and is cached locally.
+4. **Video** — a screen recording swiping through several Pokémon is
+   sampled frame by frame; each settled card is scraped like a photo, CP is
+   majority-voted across frames, and results are reviewed one by one
+   (`js/videoscanner.js`). The same Pokémon appearing with different CP/IVs
+   counts as a different Pokémon.
 
 Values the scanner can't detect confidently are left **blank** for manual
 entry — it never guesses.

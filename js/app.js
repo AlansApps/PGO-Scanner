@@ -27,6 +27,7 @@
     progressLabel: $('progress-label'),
     progressBar: $('progress-bar'),
     resultSection: $('result-section'),
+    resultCounter: $('result-counter'),
     resultThumb: $('result-thumb'),
     nameInput: $('f-name'),
     nameList: $('pokedex-names'),
@@ -47,6 +48,13 @@
 
   /** Current scan being reviewed (null when no result is open). */
   let currentScan = null;
+
+  /**
+   * Review queue for video scans: each detected Pokémon is reviewed
+   * one at a time with the same result form used for photos.
+   */
+  let reviewQueue = [];
+  let reviewIndex = 0;
 
   // ---- Pokédex data bootstrap ---------------------------------------------
 
@@ -96,13 +104,13 @@
     });
   }
 
+  /** True while a scan is running — blocks concurrent uploads. */
+  let scanning = false;
+
   async function handleFile(file) {
-    // Detect media kind: videos are planned for v2.
-    if (file.type.startsWith('video/')) {
-      alert('Video scanning is coming soon! For now, please upload a photo/screenshot.');
-      return;
-    }
-    if (!file.type.startsWith('image/')) {
+    const isVideo = file.type.startsWith('video/');
+    const isImage = file.type.startsWith('image/');
+    if (!isVideo && !isImage) {
       alert('Unsupported file type. Please upload an image or video.');
       return;
     }
@@ -110,16 +118,39 @@
       alert('Pokédex data is still loading (or failed to load). Please wait a moment and try again.');
       return;
     }
+    if (scanning) {
+      alert('A scan is already running — please wait for it to finish.');
+      return;
+    }
 
+    scanning = true;
     showProgress(0, 'Starting scan…');
     try {
-      const result = await Scanner.scanImage(file, showProgress);
-      hideProgress();
-      showResult(result);
+      if (isVideo) {
+        // Video: scan the whole recording, then review each result in turn.
+        const entries = await VideoScanner.scanVideo(file, showProgress);
+        hideProgress();
+        if (!entries.length) {
+          alert('No Pokémon cards detected in this video. Make sure the appraisal bars are visible.');
+          return;
+        }
+        reviewQueue = entries;
+        reviewIndex = 0;
+        showResult(reviewQueue[0]);
+      } else {
+        // Photo: single result.
+        reviewQueue = [];
+        reviewIndex = 0;
+        const result = await Scanner.scanImage(file, showProgress);
+        hideProgress();
+        showResult(result);
+      }
     } catch (err) {
       console.error('Scan failed:', err);
       hideProgress();
       alert('Scan failed: ' + err.message);
+    } finally {
+      scanning = false;
     }
   }
 
@@ -152,6 +183,10 @@
   function showResult(scan) {
     currentScan = scan;
     els.resultThumb.src = scan.previewUrl;
+
+    // Queue counter ("2 / 5") only while reviewing video results.
+    els.resultCounter.textContent =
+      reviewQueue.length > 1 ? `${reviewIndex + 1} / ${reviewQueue.length}` : '';
 
     setField(els.nameInput, scan.name);
     setField(els.cpInput, scan.cp);
@@ -192,9 +227,13 @@
       els.formSelect.classList.remove('needs-input');
       els.formNote.textContent = '';
     } else {
-      // Multiple forms and no confident auto-pick: make the user choose.
+      // Multiple forms and no confident auto-pick: force an explicit choice
+      // (without this, the <select> silently defaults to its first option
+      // and a wrong form could be saved unnoticed).
+      els.formSelect.insertBefore(new Option('— choose form —', ''), els.formSelect.firstChild);
+      els.formSelect.value = '';
       els.formSelect.classList.add('needs-input');
-      els.formNote.textContent = 'Multiple forms exist — please verify';
+      els.formNote.textContent = 'Multiple forms exist — please choose';
     }
   }
 
@@ -264,14 +303,29 @@
         return;
       }
       saveEntry(entry);
-      closeResult();
+      advanceQueue();
     });
 
-    els.cancelBtn.addEventListener('click', closeResult);
+    // Discard skips the current result (and moves on when reviewing a video).
+    els.cancelBtn.addEventListener('click', advanceQueue);
+  }
+
+  /** Show the next queued video result, or close the form if none is left. */
+  function advanceQueue() {
+    if (reviewIndex + 1 < reviewQueue.length) {
+      reviewIndex++;
+      showResult(reviewQueue[reviewIndex]);
+    } else {
+      reviewQueue = [];
+      reviewIndex = 0;
+      closeResult();
+    }
   }
 
   function closeResult() {
     els.resultSection.classList.add('hidden');
+    // Object URLs (photo scans) must be released; data URLs (video thumbs)
+    // are ignored by revokeObjectURL, so this is safe for both.
     if (currentScan && currentScan.previewUrl) URL.revokeObjectURL(currentScan.previewUrl);
     currentScan = null;
   }

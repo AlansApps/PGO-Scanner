@@ -120,6 +120,19 @@ body {
   margin-bottom: 4px;
 }
 
+/* "2 / 5" badge shown while reviewing multiple video results */
+.result-counter {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--red);
+  border-radius: 999px;
+  padding: 3px 10px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+.result-counter:empty { display: none; }
+
 .section-hint {
   font-size: 0.85rem;
   color: var(--navy-soft);
