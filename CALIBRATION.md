@@ -10,29 +10,32 @@ Legend: [ ] = need a sample screenshot · [x] = verified working
 Ideally one sample for every value on any of the three bars:
 
 - [x] 0  (bar completely gray/empty) — verified: Shellos CP410 Attack
-- [ ] 1  (tiny sliver of first block)
-- [ ] 2
-- [ ] 3
-- [ ] 4
+- [x] 1  (tiny sliver of first block) — verified: Blissey Defense (batch 2)
+- [x] 2  (~2/5 of block 1) — verified: Mankey HP (batch 2)
+- [x] 3  (~3/5 of block 1) — verified: Blissey Attack (batch 2)
+- [x] 4  (block 1 almost full, thin gray tip) — verified: Mankey Defense (batch 2)
 - [x] 5  (exactly one full block) — verified: Drifloon/Cherubi/Shellos14 Attack
 - [x] 6  (1 block + small stub past the separator) — verified: Buizel Attack
-- [ ] 7
+- [x] 7  (1 block + ~2/5 of block 2) — verified: Mankey Attack (batch 2)
 - [x] 8  (1 block + ~3/5 of block 2) — verified: Cherubi/Shellos410 HP
 - [x] 9  (1 block + ~4/5, thin gray tip left) — verified: Buizel Defense
-- [ ] 10 (exactly two full blocks; example: Snorlax Defense bar)
+- [x] 10 (exactly two full blocks) — verified: Necrozma Defense (batch 2)
 - [x] 11 (2 blocks + small stub) — verified: Shellos410 Defense
 - [x] 12 (2 blocks + ~2/5 of block 3) — verified: Cherubi Defense
-- [ ] 13
+- [x] 13 (2 blocks + ~3/5 of block 3) — verified: Necrozma HP (batch 2)
 - [x] 14 (2 blocks + ~4/5, thin gray tip at the end) — verified: Buizel/Shellos14 HP, Drifloon Defense
-- [x] 15 (full bar rendered RED/PINK instead of orange) — verified: Drifloon HP
+- [x] 15 (full bar rendered RED/PINK instead of orange) — verified: Drifloon HP, Necrozma Attack (red is per-bar)
 
-Still needed: 1, 2, 3, 4, 7, 10, 13.
+ALL 16 VALUES CATALOGUED. Batch 2 (Mankey/Necrozma/Blissey) is verified
+visually with unique level solutions; run the scanner on those files once
+they are copied into samples/.
 
 ## OCR — text variants
-- [ ] CP font digits 0–9 all seen at least once — seen so far: 0,1,2,3,4,5,8 (missing 6,7,9)
+- [x] CP font digits 0–9 all seen at least once — batch 2 added 6,7,9 (CP 679)
+      (scanner run on batch 2 pending — files not yet in samples/)
 - [x] 2-digit CP — verified: Shellos CP 14
 - [x] 3-digit CP — verified: 128 / 410 / 431 / 503
-- [ ] 4-digit CP (example available: CP 2757)
+- [ ] 4-digit CP — seen in batch 2 (2588, 2011) but not yet scanner-verified
 - [ ] Short name (3–4 letters, e.g. Abra)
 - [x] Medium name (6–8 letters) — verified: Buizel, Cherubi, Shellos, Drifloon
 - [ ] Long name (e.g. Feraligatr)

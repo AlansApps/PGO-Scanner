@@ -41,7 +41,9 @@ points**, so a full bar = 15. Within a block, the fill advances in fifths
 - **11 vs 14** (historical bug): don't summarize as "2 blocks + a bit" —
   measure the third block's fill fraction: stub (~1/5) = 11, near-full = 14.
 
-## Verified real-world samples (2026-07-16 batch, WhatsApp JPEGs)
+## Verified real-world samples
+
+Batch 1 (2026-07-16, WhatsApp JPEGs — scanner-verified 5/5):
 | Pokémon | CP | IVs (ground truth) | Values exercised |
 |---------|-----|--------------------|------------------|
 | Drifloon | 503 | 5 / 14 / 15 | 5, 14, red-15 |
@@ -50,6 +52,20 @@ points**, so a full bar = 15. Within a block, the fill advances in fifths
 | Cherubi | 431 | 5 / 12 / 8 | 12, 8 |
 | Buizel ♀ | 128 | 6 / 9 / 14 | 6, 9, 14 |
 
-Scanner result on this batch: **15/15 IVs, 5/5 names, 5/5 CPs correct.**
-Values not yet seen on a real screenshot: 1, 2, 3, 4, 7, 10, 13
-(see CALIBRATION.md).
+Batch 2 (2026-07-17, full-resolution screenshots — visually verified 9/9,
+levels solve uniquely; scanner run pending until files land in samples/):
+| Pokémon | CP | IVs (ground truth) | Values exercised | Level |
+|---------|-----|--------------------|------------------|-------|
+| Mankey ♀ | 679 | 7 / 4 / 2 | 7, 4, 2 | 24 |
+| Necrozma | 2588 | 15 / 10 / 13 | red-15 (Attack bar!), 10, 13 | 25 |
+| Blissey ♀ | 2011 | 3 / 1 / 14 | 3, 1, 14 | 29 |
+
+Notes from batch 2:
+- The red "maxed" rendering is PER BAR: Necrozma's Attack bar is red while
+  Defense/HP stay orange.
+- A green tag pill (e.g. "PVM") can appear under the HP line — it sits
+  below the name band and must not be OCR'd as the name.
+
+**All 16 values (0–15) are now catalogued with real-screenshot anchors.**
+
+Scanner result on batch 1: **15/15 IVs, 5/5 names, 5/5 CPs correct.**
