@@ -24,6 +24,25 @@ const Pokedex = (() => {
   const CACHE_KEY = 'pgo-scanner-pokedex-v1';
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // refresh weekly
 
+  /**
+   * Official Game Master CP multipliers for levels 40.5–51.
+   * PogoAPI's cp_multiplier.json only reaches level 45 and admits its
+   * half-levels above 40 are interpolated ("may not be entirely correct"),
+   * so these authoritative constants are merged OVER the API data.
+   * Levels above 40 need XL Candy; 50.5/51 exist only via Best Buddy (+1).
+   * Source: Game Master (verified against GamePress/PvPoke).
+   */
+  const OFFICIAL_HIGH_CPM = {
+    40.5: 0.792803968, 41: 0.79530001, 41.5: 0.797800015,
+    42: 0.80030001, 42.5: 0.802799995, 43: 0.80530001,
+    43.5: 0.807799978, 44: 0.81030001, 44.5: 0.812799963,
+    45: 0.81530001, 45.5: 0.817799948, 46: 0.82029999,
+    46.5: 0.822799933, 47: 0.82529999, 47.5: 0.827799918,
+    48: 0.83029999, 48.5: 0.832799903, 49: 0.83529999,
+    49.5: 0.837799888, 50: 0.84029999, 50.5: 0.842799873,
+    51: 0.84529999,
+  };
+
   /** All 18 Pokémon types, used to spot type words in OCR text. */
   const ALL_TYPES = [
     'Normal', 'Fire', 'Water', 'Electric', 'Grass', 'Ice', 'Fighting',
@@ -122,9 +141,18 @@ const Pokedex = (() => {
 
     allNames = [...new Set(stats.map((s) => s.pokemon_name))].sort();
 
-    // Sort CPM by level so findLevelsForCP results come out ordered.
-    cpmTable = cpm
-      .map((row) => ({ level: row.level, multiplier: row.multiplier }))
+    // Build the CPM table: API rows first, then merge the official
+    // constants for 40.5–51 over them (replacing the API's imprecise
+    // interpolations and adding the levels the API is missing).
+    // Cap at level 51: game max is 50, +1 with a Best Buddy boost.
+    const cpmByLevel = new Map();
+    for (const row of cpm) cpmByLevel.set(row.level, row.multiplier);
+    for (const [level, multiplier] of Object.entries(OFFICIAL_HIGH_CPM)) {
+      cpmByLevel.set(parseFloat(level), multiplier);
+    }
+    cpmTable = [...cpmByLevel.entries()]
+      .map(([level, multiplier]) => ({ level, multiplier }))
+      .filter((row) => row.level <= 51)
       .sort((a, b) => a.level - b.level);
 
     loaded = true;

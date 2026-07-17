@@ -230,26 +230,39 @@ body {
 }
 
 /* ----------------------------- Result card ----------------------------- */
+/* Deliberately compact: the whole scan-result block should stay small,
+   with the form taking roughly the same height as the thumbnail. */
+.result-card { padding: 14px; }
+.result-card .section-hint { margin-bottom: 10px; font-size: 0.76rem; }
+
 .result-layout {
   display: flex;
-  gap: 16px;
+  gap: 12px;
   align-items: flex-start;
 }
 
 .thumb-wrap {
-  flex: 0 0 110px;
-  border-radius: 12px;
+  flex: 0 0 78px;
+  border-radius: 10px;
   overflow: hidden;
   border: 2px solid var(--border);
 }
 .thumb-wrap img { display: block; width: 100%; height: auto; }
 
-.result-form { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+/* Two-column grid: Pokémon spans both columns, Form + CP share a row,
+   the IV fieldset spans both again. */
+.result-form {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.span-2 { grid-column: 1 / -1; }
 
-.field { display: flex; flex-direction: column; gap: 4px; }
+.field { display: flex; flex-direction: column; gap: 2px; }
 
 .field label {
-  font-size: 0.78rem;
+  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -259,9 +272,10 @@ body {
 .field input,
 .field select {
   font: inherit;
-  padding: 10px 12px;
+  font-size: 0.9rem;
+  padding: 6px 9px;
   border: 2px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
   color: var(--navy);
   width: 100%;
@@ -284,40 +298,40 @@ body {
 
 .iv-fieldset {
   border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
+  border-radius: 10px;
+  padding: 6px 8px 8px;
 }
 .iv-fieldset legend {
-  font-size: 0.78rem;
+  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--navy-soft);
-  padding: 0 6px;
+  padding: 0 5px;
 }
-.iv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.iv-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
 /* --------------------------- Derived (calc) ---------------------------- */
 .derived-panel {
-  margin-top: 18px;
+  margin-top: 12px;
   background: #f7f9fd;
   border: 2px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
 }
 .derived-panel h3 {
-  font-size: 0.78rem;
+  font-size: 0.66rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--navy-soft);
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
-.derived-content { font-size: 0.95rem; line-height: 1.6; }
+.derived-content { font-size: 0.88rem; line-height: 1.55; }
 .derived-content .stat-line strong { color: var(--red-dark); }
 
 .result-actions {
-  margin-top: 20px;
+  margin-top: 14px;
   display: flex;
   gap: 12px;
   justify-content: center;
@@ -367,7 +381,6 @@ body {
 
 /* ---------------------------- Small screens ---------------------------- */
 @media (max-width: 480px) {
-  .result-layout { flex-direction: column; }
-  .thumb-wrap { flex: none; width: 120px; margin: 0 auto; }
+  .thumb-wrap { flex-basis: 64px; }
   .app-header h1 { font-size: 1.7rem; }
 }

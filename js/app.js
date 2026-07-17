@@ -259,7 +259,7 @@
     return valid ? { name, form, cp, ivs } : null;
   }
 
-  /** Recompute the "Calculated" panel (level + real stats) from the form. */
+  /** Recompute the "Calculated" panel (level + league targets) from the form. */
   function refreshDerived() {
     const entry = readForm();
     if (!entry) {
@@ -268,21 +268,41 @@
     }
 
     const levels = PgoCalc.findLevelsForCP(entry.form.base, entry.ivs, entry.cp, Pokedex.cpmTable);
-    const ivPct = Math.round(((entry.ivs.atk + entry.ivs.def + entry.ivs.hp) / 45) * 100);
 
-    let html = `<div class="stat-line">IV total: <strong>${entry.ivs.atk}/${entry.ivs.def}/${entry.ivs.hp}</strong> (${ivPct}%)</div>`;
+    // Row 1: named IVs + current level (several levels can share one CP).
+    const levelText = levels.length
+      ? levels.map((l) => l.level).join(' / ')
+      : `⚠️ none matches CP ${entry.cp}`;
+    let html =
+      `<div class="stat-line">Atk <strong>${entry.ivs.atk}</strong> · ` +
+      `Def <strong>${entry.ivs.def}</strong> · HP <strong>${entry.ivs.hp}</strong> — ` +
+      `Level <strong>${levelText}</strong></div>`;
 
-    if (!levels.length) {
-      html += `<div class="stat-line">⚠️ No level matches CP ${entry.cp} with these IVs — double-check the values.</div>`;
-    } else {
-      for (const lvl of levels) {
-        const stats = PgoCalc.computeStats(entry.form.base, entry.ivs, lvl.multiplier);
-        html += `<div class="stat-line">Level <strong>${lvl.level}</strong> — ` +
-                `Atk ${stats.attack.toFixed(1)} · Def ${stats.defense.toFixed(1)} · HP ${stats.hp}</div>`;
+    // Rows 2-3: the level that gets closest to each league cap WITHOUT
+    // exceeding it (exactly 1500/2500 is allowed) and the resulting CP.
+    // Power-ups are one-way, so if the Pokémon is already above that
+    // level the league is out of reach; levels above 40 need XL Candy
+    // and 50.5/51 exist only with a Best Buddy boost.
+    const minCurrentLevel = levels.length ? Math.min(...levels.map((l) => l.level)) : null;
+    const leagues = [
+      { label: 'Great League', cap: 1500 },
+      { label: 'Ultra League', cap: 2500 },
+    ];
+    for (const { label, cap } of leagues) {
+      const best = PgoCalc.bestLevelForCap(entry.form.base, entry.ivs, cap, Pokedex.cpmTable);
+      if (!best) {
+        html += `<div class="stat-line">${label}: over ${cap} CP even at level 1</div>`;
+        continue;
       }
-      if (levels.length > 1) {
-        html += `<div class="stat-line">ℹ️ Several levels produce this exact CP.</div>`;
+      let note = '';
+      if (minCurrentLevel !== null && minCurrentLevel > best.level) {
+        note = " ⚠️ already above — can't power down";
+      } else if (best.level > 50) {
+        note = ' (Best Buddy)';
+      } else if (best.level > 40) {
+        note = ' (XL Candy)';
       }
+      html += `<div class="stat-line">${label}: Level <strong>${best.level}</strong> → CP <strong>${best.cp}</strong>${note}</div>`;
     }
 
     els.derivedContent.innerHTML = html;

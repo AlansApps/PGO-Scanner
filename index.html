@@ -67,7 +67,7 @@
     -->
     <section id="result-section" class="card result-card hidden">
       <h2 class="section-title">Scan result <span id="result-counter" class="result-counter"></span></h2>
-      <p class="section-hint">Check the values below. Blank fields could not be detected &mdash; fill them in manually, then press OK.</p>
+      <p class="section-hint">Blank / yellow fields need manual entry, then press OK.</p>
 
       <div class="result-layout">
         <div class="thumb-wrap">
@@ -75,14 +75,14 @@
         </div>
 
         <form id="result-form" class="result-form" autocomplete="off">
-          <div class="field">
+          <div class="field span-2">
             <label for="f-name">Pokémon</label>
             <input id="f-name" type="text" list="pokedex-names" placeholder="e.g. Snorlax" />
             <datalist id="pokedex-names"></datalist>
           </div>
 
           <div class="field">
-            <label for="f-form">Form / variant</label>
+            <label for="f-form">Form</label>
             <select id="f-form">
               <option value="">&mdash;</option>
             </select>
@@ -91,18 +91,18 @@
 
           <div class="field">
             <label for="f-cp">CP</label>
-            <input id="f-cp" type="number" inputmode="numeric" min="10" max="9999" placeholder="e.g. 2757" />
+            <input id="f-cp" type="number" inputmode="numeric" min="10" max="9999" placeholder="?" />
           </div>
 
-          <fieldset class="iv-fieldset">
+          <fieldset class="iv-fieldset span-2">
             <legend>IVs (0&ndash;15)</legend>
             <div class="iv-grid">
               <div class="field">
-                <label for="f-iv-atk">Attack</label>
+                <label for="f-iv-atk">Atk</label>
                 <input id="f-iv-atk" type="number" inputmode="numeric" min="0" max="15" placeholder="?" />
               </div>
               <div class="field">
-                <label for="f-iv-def">Defense</label>
+                <label for="f-iv-def">Def</label>
                 <input id="f-iv-def" type="number" inputmode="numeric" min="0" max="15" placeholder="?" />
               </div>
               <div class="field">

@@ -61,6 +61,31 @@ const PgoCalc = (() => {
   }
 
   /**
+   * Find the level that brings this Pokémon AS CLOSE AS POSSIBLE to a
+   * league CP cap WITHOUT exceeding it (cap itself is allowed: 1500 is
+   * legal for Great League, 1501 is not).
+   *
+   * CP grows monotonically with level, so the answer is simply the
+   * highest level whose CP is <= cap. When several levels share that CP
+   * the highest level wins (same CP, better real stats).
+   *
+   * @param {{attack:number, defense:number, stamina:number}} base
+   * @param {{atk:number, def:number, hp:number}} ivs
+   * @param {number} cap - league CP cap (e.g. 1500, 2500)
+   * @param {Array<{level:number, multiplier:number}>} cpmTable - sorted by level
+   * @returns {{level:number, cp:number}|null} null if even level 1 exceeds the cap
+   */
+  function bestLevelForCap(base, ivs, cap, cpmTable) {
+    let best = null;
+    for (const row of cpmTable) {
+      const cp = computeCP(base, ivs, row.multiplier);
+      if (cp > cap) break; // monotonic: everything after also exceeds
+      best = { level: row.level, cp };
+    }
+    return best;
+  }
+
+  /**
    * Validate an IV value: integer within 0..15.
    * @returns {boolean}
    */
@@ -69,6 +94,6 @@ const PgoCalc = (() => {
   }
 
   // Public API
-  return { computeCP, computeStats, findLevelsForCP, isValidIV };
+  return { computeCP, computeStats, findLevelsForCP, bestLevelForCap, isValidIV };
 
 })();
