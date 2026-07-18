@@ -443,4 +443,15 @@ body {
 @media (max-width: 480px) {
   .thumb-wrap { flex-basis: 64px; }
   .app-header h1 { font-size: 1.7rem; }
+
+  /* Keep the 3-column league grid readable on phone screens:
+     tighter paddings and smaller pill text, same alignment. */
+  .container { padding-left: 8px; padding-right: 8px; }
+  .card { padding: 14px 10px; }
+  .collection-item { padding: 8px 6px; }
+  .evo-row { padding: 5px 6px; gap: 4px; grid-template-columns: minmax(0, 0.8fr) 1fr 1fr; }
+  .evo-name { font-size: 0.78rem; }
+  .league-chip { font-size: 0.64rem; padding: 2px 4px; }
+  .evo-row-sm .league-chip { font-size: 0.62rem; padding: 1px 3px; }
+  .ci-title { font-size: 0.85rem; }
 }

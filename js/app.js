@@ -380,8 +380,9 @@
       if (stage.form && stage.form !== 'Normal') title += ` (${stage.form})`;
       if (stage.genderRequired) title += ` — ${stage.genderRequired.toLowerCase()} only`;
 
+      // Pill format: "Great: BAD | 1495 (19)" = closest CP (target level).
       const chips = perLeague.map(({ name, best, tier }) => {
-        const detail = best ? ` L${best.level} → ${best.cp}` : '';
+        const detail = best ? ` | ${best.cp} (${best.level})` : '';
         return `<span class="league-chip tier-${tier.key}">${name}: <strong>${tier.label}</strong>${detail}</span>`;
       }).join('');
 
@@ -505,15 +506,19 @@
       ].map(({ name, cap }) => {
         const best = PgoCalc.bestLevelForCap(stage.base, e.ivs, cap, cpmMax50);
         const tier = PgoCalc.rateLeague(best, cap, e.ivs, minLevel);
-        return { name, tier };
+        return { name, best, tier };
       });
       const rowTier = perLeague.reduce((a, b) => (a.tier.rank >= b.tier.rank ? a : b)).tier;
 
       let title = stage.name + formTitleHtml(stage.form).replace(/<\/?strong>/g, '');
       if (stage.genderRequired) title += ` — ${stage.genderRequired.toLowerCase()} only`;
 
+      // Pill format: "Great: BAD | 1495 (19)" = closest CP (target level).
       const chips = perLeague
-        .map(({ name, tier }) => `<span class="league-chip tier-${tier.key}">${name}: <strong>${tier.label}</strong></span>`)
+        .map(({ name, best, tier }) => {
+          const detail = best ? ` | ${best.cp} (${best.level})` : '';
+          return `<span class="league-chip tier-${tier.key}">${name}: <strong>${tier.label}</strong>${detail}</span>`;
+        })
         .join('');
       html += `<div class="evo-row evo-row-sm tier-${rowTier.key}"><span class="evo-name">${title}</span>${chips}</div>`;
     }
