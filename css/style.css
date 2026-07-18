@@ -333,17 +333,19 @@ body {
 /* ---- League rating rows (one per evolution stage) ----
    Row background/border = the stage's BEST tier across both leagues;
    each league chip is colored by its own tier. */
+/* Three aligned columns: Pokémon | Great League | Ultra League.
+   Fractional columns keep every row aligned like a table. */
 .evo-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) 1fr 1fr;
   align-items: center;
-  gap: 6px 10px;
+  gap: 6px 8px;
   margin-top: 6px;
   padding: 6px 10px;
   border-radius: 8px;
   border-left: 4px solid transparent;
 }
-.evo-name { font-weight: 800; margin-right: auto; }
+.evo-name { font-weight: 400; overflow-wrap: anywhere; }
 
 .league-chip {
   font-size: 0.78rem;
@@ -351,6 +353,7 @@ body {
   padding: 2px 9px;
   background: rgba(255, 255, 255, 0.75);
   white-space: nowrap;
+  text-align: center;
 }
 
 /* Tier palette: strong green / light green / yellow / red */
