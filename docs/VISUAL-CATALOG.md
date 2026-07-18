@@ -27,27 +27,37 @@ that's why the icon library matters more than the word.
 ## Type icon library (18 total)
 Colored circle + white glyph, shown under the name row next to WEIGHT.
 
-Seen and learned (7):
-- [x] Normal — gray-pink circle, plain dot glyph (Blissey, Snorlax)
-- [x] Water — blue circle, droplet glyph (Buizel, Shellos)
-- [x] Grass — green circle, leaf glyph (Cherubi)
-- [x] Fighting — dark red circle, fist glyph (Mankey)
-- [x] Psychic — pink/magenta circle, swirl glyph (Necrozma)
+Seen and learned (11):
+- [x] Normal — gray-pink circle, plain dot glyph (Blissey, Snorlax, Buneary)
+- [x] Water — blue circle, droplet glyph (Buizel, Shellos, Mudkip, Oshawott)
+- [x] Grass — green circle, leaf glyph (Cherubi, Lileep 2nd, Carnivine)
+- [x] Fighting — dark red circle, fist glyph (Mankey, Meditite, Riolu)
+- [x] Psychic — pink/magenta circle, swirl glyph (Necrozma, Meditite 2nd, Bronzor 2nd)
 - [x] Ghost — purple circle, ghost glyph (Drifloon, first of its pair)
-- [x] Flying — light blue/lavender circle, wing glyph (Drifloon, second)
+- [x] Flying — light blue/lavender circle, wing glyph (Drifloon/Zubat, second)
+- [x] Poison — dusty pink/mauve circle, droplet-cross glyph (Zubat, Grimer) — 2026-07-18 video batch
+- [x] Rock — khaki/brown circle, boulder glyph (Lileep) — 2026-07-18 video batch
+- [x] Electric — mustard-yellow circle, lightning bolt glyph (Shinx) — 2026-07-18 video batch
+- [x] Steel — gray-green circle, gear/ring glyph (Bronzor) — 2026-07-18 video batch
 
-Still needed — send one screenshot containing each (11):
+Still needed — send one screenshot containing each (7):
 - [ ] Fire
-- [ ] Electric
 - [ ] Ice
-- [ ] Poison
 - [ ] Ground
 - [ ] Bug
-- [ ] Rock
 - [ ] Dragon
 - [ ] Dark
-- [ ] Steel
 - [ ] Fairy
+
+Additional traps learned (2026-07-18 videos):
+- LUCKY Pokémon show a gold "Lucky Pokémon" label under the name and a
+  sparkle background; the name band can misread on those frames.
+- Short OCR words could fuzzy-match short species names ("New" -> Mew);
+  fixed: names of <=4 letters must match exactly, 5-6 letters allow one
+  edit (js/pokedex.js matchName).
+- The first second of a recording can catch the appraisal overlay while
+  it is still animating in — CP usually fails there, sending the entry
+  to manual review (safe).
 
 ## Why types matter for identification
 The same species name can exist with different types per REGIONAL FORM

@@ -17,20 +17,28 @@
   const LAST_BATCH_KEY = 'pgo-scanner-last-batch-v1';
 
   /**
-   * Regional form -> display adjective. Any form in this map is shown
-   * BOLD next to the name (e.g. "Raichu (Alolan)"); other non-Normal
-   * forms (East Sea, Origin, ...) are shown in regular weight.
+   * Pokémon-world regional form prefixes -> display adjective. Matched
+   * by PREFIX so sub-forms are covered too ("Galarian_zen" -> "Galarian
+   * Zen", "Paldea_combat" -> "Paldean Combat"). Regional forms are shown
+   * BOLD next to the name; other non-Normal forms in regular weight.
    */
-  const REGIONAL_FORMS = {
-    Alola: 'Alolan',
-    Alolan: 'Alolan',
-    Galarian: 'Galarian',
-    Galar: 'Galarian',
-    Hisuian: 'Hisuian',
-    Hisui: 'Hisuian',
-    Paldea: 'Paldean',
-    Paldean: 'Paldean',
-  };
+  const REGIONAL_PREFIXES = [
+    { re: /^alola/i, label: 'Alolan' },
+    { re: /^galar/i, label: 'Galarian' },
+    { re: /^hisui/i, label: 'Hisuian' },
+    { re: /^paldea/i, label: 'Paldean' },
+  ];
+
+  /** "Alola" -> "Alolan"; "Paldea_combat" -> "Paldean Combat"; else null. */
+  function regionalLabel(form) {
+    for (const { re, label } of REGIONAL_PREFIXES) {
+      if (re.test(form)) {
+        const rest = form.replace(/^[^_]+_?/, '').replace(/_/g, ' ');
+        return rest ? `${label} ${rest.charAt(0).toUpperCase()}${rest.slice(1)}` : label;
+      }
+    }
+    return null;
+  }
 
   // ---- DOM references ----------------------------------------------------
   const $ = (id) => document.getElementById(id);
@@ -486,7 +494,7 @@
    */
   function formTitleHtml(name, form) {
     if (!form || form === 'Normal') return '';
-    const regional = REGIONAL_FORMS[form];
+    const regional = regionalLabel(form);
     if (regional) return ` <strong>(${regional})</strong>`;
     if (Pokedex.isLoaded && !Pokedex.hasSignificantForms(name)) return '';
     return ` (${form.replace(/_/g, ' ')})`;

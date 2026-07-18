@@ -215,12 +215,21 @@ const Pokedex = (() => {
     const needle = normalizeName(text);
     if (needle.length < 3) return null; // too short to match reliably
 
+    // Short strings carry little redundancy, so scale the allowed edit
+    // distance with length: <=4 chars must match exactly (OCR noise
+    // like "New" must never morph into "Mew"), 5-6 chars allow 1 edit,
+    // 7+ allow the full maxDistance.
+    const allowed = Math.min(
+      maxDistance,
+      needle.length <= 4 ? 0 : needle.length <= 6 ? 1 : 2
+    );
+
     let best = null;
     for (const [key, entries] of byName) {
       // Quick length filter before computing the full edit distance.
-      if (Math.abs(key.length - needle.length) > maxDistance) continue;
+      if (Math.abs(key.length - needle.length) > allowed) continue;
       const d = levenshtein(needle, key);
-      if (d <= maxDistance && (!best || d < best.distance)) {
+      if (d <= allowed && (!best || d < best.distance)) {
         best = { name: entries[0].name, distance: d };
         if (d === 0) break; // exact match — stop early
       }
@@ -308,8 +317,26 @@ const Pokedex = (() => {
    */
   function getEvolutionChain(formEntry) {
     const out = [];
-    const seen = new Set([`${formEntry.id}|${formEntry.form}`]);
-    const queue = [formEntry];
+    const seen = new Set();
+    // Output dedupe by FUNCTIONAL signature: cosmetic-equivalent
+    // evolutions (Gastrodon East/West) produce one row, while
+    // functionally different ones (the three Wormadam cloaks) keep
+    // one row each.
+    const outSigs = new Set([`${formEntry.name}|${formSignature(formEntry)}`]);
+
+    // Seed with EVERY cosmetic sibling of the scanned form, not just
+    // the representative: cosmetic variants can have different
+    // evolution outcomes (Burmy cloaks -> different Wormadam forms;
+    // only White-striped Basculin -> Basculegion), so the union of all
+    // sibling chains is walked. (pogo-auditor finding, 2026-07-18.)
+    const sig = formSignature(formEntry);
+    const queue = [];
+    for (const sibling of getForms(formEntry.name)) {
+      if (formSignature(sibling) === sig) {
+        seen.add(`${sibling.id}|${sibling.form}`);
+        queue.push(sibling);
+      }
+    }
 
     while (queue.length) {
       const current = queue.shift();
@@ -320,13 +347,19 @@ const Pokedex = (() => {
         seen.add(key);
 
         // Resolve the evolved species to its stats entry, matching the
-        // exact form when possible (regional lines keep their region).
+        // exact form when possible (regional lines keep their region;
+        // fallback covers evolutions whose species has no such form
+        // entry, e.g. Galarian Corsola -> Cursola stored as "Normal").
         const forms = byName.get(normalizeName(evo.pokemon_name)) || [];
         const resolved = forms.find((f) => f.form === evo.form) || forms[0];
         if (!resolved) continue; // species missing from stats data
 
+        queue.push(resolved); // keep walking even when the row dedupes
+
+        const outKey = `${resolved.name}|${formSignature(resolved)}`;
+        if (outSigs.has(outKey)) continue;
+        outSigs.add(outKey);
         out.push({ ...resolved, genderRequired: evo.gender_required || null });
-        queue.push(resolved);
       }
     }
     return out;
