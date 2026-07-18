@@ -35,16 +35,54 @@ const VideoScanner = (() => {
       const video = document.createElement('video');
       video.muted = true;
       video.playsInline = true;
+      video.preload = 'auto';
       video.onloadedmetadata = () => resolve(video);
       video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not decode video file.')); };
       video.src = url;
     });
   }
 
-  /** Seek the video to a time and resolve once the frame is available. */
+  /**
+   * Kickstart the decode pipeline. iOS/WebKit may never deliver frames
+   * (or 'seeked' events) for a video that has not started playing at
+   * least once; a muted inline play+pause is allowed without a user
+   * gesture and unblocks seeking. No-op where unnecessary.
+   */
+  async function primeVideo(video) {
+    try {
+      await video.play();
+      video.pause();
+      video.currentTime = 0;
+    } catch (_) { /* non-fatal: desktop browsers seek fine without it */ }
+  }
+
+  /**
+   * Seek the video to a time and resolve once the frame is available.
+   * Resolves on WHICHEVER fires first:
+   *   - 'seeked' (fast and reliable on desktop browsers),
+   *   - requestVideoFrameCallback (the signal iOS/WebKit actually
+   *     delivers — it often drops 'seeked' on paused videos),
+   *   - a hard 2s timeout, so a missed event can NEVER hang the scan
+   *     (worst case one stale frame gets analyzed).
+   */
   function seekTo(video, t) {
     return new Promise((resolve) => {
-      video.onseeked = () => resolve();
+      // No-op seek (already at t): no event will fire — resolve now.
+      if (Math.abs(video.currentTime - t) < 0.001) { resolve(); return; }
+
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        video.onseeked = null;
+        resolve();
+      };
+      const timer = setTimeout(done, 2000);
+      video.onseeked = done;
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        video.requestVideoFrameCallback(() => done());
+      }
       video.currentTime = t;
     });
   }
@@ -101,6 +139,7 @@ const VideoScanner = (() => {
     const video = await fileToVideo(file);
     const W = video.videoWidth, H = video.videoHeight, D = video.duration;
     if (!W || !H || !isFinite(D)) throw new Error('Unsupported or corrupted video.');
+    await primeVideo(video); // required on iOS before seeking works
 
     const frame = document.createElement('canvas');
     frame.width = W;
@@ -135,6 +174,8 @@ const VideoScanner = (() => {
     const stable = groups.filter((g) => g.key && g.count >= MIN_STABLE_FRAMES);
 
     // ---- Pass 3: OCR name + CP for each stable group ----------------------
+    // First OCR call may download the engine (~15 MB) — show progress.
+    Scanner.setOcrSetupHook((label) => onProgress(50, label));
     const entries = [];
     for (let i = 0; i < stable.length; i++) {
       const g = stable[i];
@@ -181,6 +222,7 @@ const VideoScanner = (() => {
       if (!same) deduped.push(e);
     }
 
+    Scanner.setOcrSetupHook(null);
     URL.revokeObjectURL(video.src);
     onProgress(100, 'Done');
     return deduped;

@@ -35,10 +35,28 @@ const Scanner = (() => {
     scale: 3,
   };
 
+  /**
+   * Hook the current scan can set to surface OCR engine setup progress.
+   * On a phone's first scan Tesseract downloads ~15 MB (wasm core +
+   * language data) — without feedback that looks like a frozen app.
+   */
+  let ocrSetupHook = null;
+
   /** Lazily-created shared Tesseract worker (creating one is expensive). */
   let workerPromise = null;
   function getWorker() {
-    if (!workerPromise) workerPromise = Tesseract.createWorker('eng');
+    if (!workerPromise) {
+      workerPromise = Tesseract.createWorker('eng', 1, {
+        logger: (m) => {
+          if (!ocrSetupHook || !m.status) return;
+          // Statuses before recognition = engine setup (downloads etc.)
+          if (m.status !== 'recognizing text') {
+            const pct = typeof m.progress === 'number' ? ` ${Math.round(m.progress * 100)}%` : '';
+            ocrSetupHook(`Preparing OCR engine (first scan only)…${pct}`);
+          }
+        },
+      });
+    }
     return workerPromise;
   }
 
@@ -209,11 +227,14 @@ const Scanner = (() => {
 
     // --- OCR pass 1: dedicated CP band (fast, small crop) ---
     onProgress(25, 'Reading CP…');
+    ocrSetupHook = (label) => onProgress(30, label); // engine download feedback
     let cp = null;
     try {
       cp = await ocrCPBand(img);
     } catch (err) {
       console.warn('CP band OCR failed:', err);
+    } finally {
+      ocrSetupHook = null;
     }
 
     // --- OCR pass 2: full image, for name and type words ---
@@ -282,7 +303,10 @@ const Scanner = (() => {
     };
   }
 
+  /** Let callers (e.g. the video scanner) receive OCR setup progress. */
+  function setOcrSetupHook(fn) { ocrSetupHook = fn; }
+
   // Public API (band OCR helpers are reused by the video scanner)
-  return { scanImage, scanFrame, ocrCPBand, ocrNameBand };
+  return { scanImage, scanFrame, ocrCPBand, ocrNameBand, setOcrSetupHook };
 
 })();
