@@ -259,7 +259,7 @@
     return valid ? { name, form, cp, ivs } : null;
   }
 
-  /** Recompute the "Calculated" panel (level + league targets) from the form. */
+  /** Recompute the "Calculated" panel (level + league ratings) from the form. */
   function refreshDerived() {
     const entry = readForm();
     if (!entry) {
@@ -268,6 +268,7 @@
     }
 
     const levels = PgoCalc.findLevelsForCP(entry.form.base, entry.ivs, entry.cp, Pokedex.cpmTable);
+    const minCurrentLevel = levels.length ? Math.min(...levels.map((l) => l.level)) : null;
 
     // Row 1: named IVs + current level (several levels can share one CP).
     const levelText = levels.length
@@ -278,31 +279,38 @@
       `Def <strong>${entry.ivs.def}</strong> · HP <strong>${entry.ivs.hp}</strong> — ` +
       `Level <strong>${levelText}</strong></div>`;
 
-    // Rows 2-3: the level that gets closest to each league cap WITHOUT
-    // exceeding it (exactly 1500/2500 is allowed) and the resulting CP.
-    // Power-ups are one-way, so if the Pokémon is already above that
-    // level the league is out of reach; levels above 40 need XL Candy
-    // and 50.5/51 exist only with a Best Buddy boost.
-    const minCurrentLevel = levels.length ? Math.min(...levels.map((l) => l.level)) : null;
-    const leagues = [
-      { label: 'Great League', cap: 1500 },
-      { label: 'Ultra League', cap: 2500 },
-    ];
-    for (const { label, cap } of leagues) {
-      const best = PgoCalc.bestLevelForCap(entry.form.base, entry.ivs, cap, Pokedex.cpmTable);
-      if (!best) {
-        html += `<div class="stat-line">${label}: over ${cap} CP even at level 1</div>`;
-        continue;
-      }
-      let note = '';
-      if (minCurrentLevel !== null && minCurrentLevel > best.level) {
-        note = " ⚠️ already above — can't power down";
-      } else if (best.level > 50) {
-        note = ' (Best Buddy)';
-      } else if (best.level > 40) {
-        note = ' (XL Candy)';
-      }
-      html += `<div class="stat-line">${label}: Level <strong>${best.level}</strong> → CP <strong>${best.cp}</strong>${note}</div>`;
+    // League ratings: one colored row for the scanned Pokémon and one per
+    // future evolution. Evolutions keep level and IVs, so each stage is
+    // rated with the same IVs and the same current-level constraint
+    // (power-ups are one-way; power-downs don't exist). Max level for
+    // maximizing toward a cap: 50 (user rule).
+    const cpmMax50 = Pokedex.cpmTable.filter((r) => r.level <= 50);
+    const stages = [entry.form, ...Pokedex.getEvolutionChain(entry.form)];
+
+    for (const stage of stages) {
+      const perLeague = [
+        { name: 'Great', cap: 1500 },
+        { name: 'Ultra', cap: 2500 },
+      ].map(({ name, cap }) => {
+        const best = PgoCalc.bestLevelForCap(stage.base, entry.ivs, cap, cpmMax50);
+        const tier = PgoCalc.rateLeague(best, cap, entry.ivs, minCurrentLevel);
+        return { name, best, tier };
+      });
+
+      // Row highlight = the BEST tier across the two leagues.
+      const rowTier = perLeague.reduce((a, b) => (a.tier.rank >= b.tier.rank ? a : b)).tier;
+
+      // Stage title: append non-Normal form and gender requirement.
+      let title = stage.name;
+      if (stage.form && stage.form !== 'Normal') title += ` (${stage.form})`;
+      if (stage.genderRequired) title += ` — ${stage.genderRequired.toLowerCase()} only`;
+
+      const chips = perLeague.map(({ name, best, tier }) => {
+        const detail = best ? ` L${best.level} → ${best.cp}` : '';
+        return `<span class="league-chip tier-${tier.key}">${name}: <strong>${tier.label}</strong>${detail}</span>`;
+      }).join('');
+
+      html += `<div class="evo-row tier-${rowTier.key}"><span class="evo-name">${title}</span>${chips}</div>`;
     }
 
     els.derivedContent.innerHTML = html;

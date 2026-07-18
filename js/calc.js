@@ -86,6 +86,59 @@ const PgoCalc = (() => {
   }
 
   /**
+   * League-suitability tiers, best to worst. `rank` orders them so the
+   * best tier across leagues can pick a row's highlight color.
+   */
+  const TIERS = {
+    excellent: { key: 'excellent', label: 'EXCELLENT', rank: 3 },
+    good:      { key: 'good',      label: 'GOOD',      rank: 2 },
+    moderate:  { key: 'moderate',  label: 'MODERATE',  rank: 1 },
+    bad:       { key: 'bad',       label: 'BAD',       rank: 0 },
+  };
+
+  /** PvP-suitable IV spread: low Attack (0–5), high Defense & HP (10–15). */
+  function hasPvpIVs(ivs) {
+    return ivs.atk <= 5 && ivs.def >= 10 && ivs.hp >= 10;
+  }
+
+  /**
+   * Rate how well a Pokémon fits a league cap, given the best reachable
+   * target (from bestLevelForCap over a table already limited to the
+   * allowed max level — 50 for this rating).
+   *
+   * Rules (user-defined):
+   *   EXCELLENT: target CP within 1 of the cap (1499–1500 / 2499–2500),
+   *              any IVs; OR within 5 of the cap AND PvP IVs.
+   *   GOOD:      target CP within 10 of the cap (no IV requirement).
+   *   MODERATE:  target CP within 20 of the cap AND PvP IVs.
+   *   BAD:       everything else.
+   *   OVERRIDE:  if the target level is BELOW the Pokémon's current level,
+   *              the league is unreachable (no power-downs) -> BAD,
+   *              regardless of the rules above.
+   *
+   * @param {{level:number, cp:number}|null} best - from bestLevelForCap
+   * @param {number} cap - 1500 or 2500
+   * @param {{atk:number, def:number, hp:number}} ivs
+   * @param {number|null} currentLevel - the Pokémon's current level (min
+   *        candidate when ambiguous), or null when unknown
+   * @returns {{key:string, label:string, rank:number}}
+   */
+  function rateLeague(best, cap, ivs, currentLevel) {
+    if (!best) return TIERS.bad; // exceeds the cap even at level 1
+    if (currentLevel !== null && currentLevel > best.level) {
+      return TIERS.bad; // would need a lower level than it already has
+    }
+
+    const diff = cap - best.cp;
+    const pvp = hasPvpIVs(ivs);
+    if (diff <= 1) return TIERS.excellent;
+    if (diff <= 5 && pvp) return TIERS.excellent;
+    if (diff <= 10) return TIERS.good;
+    if (diff <= 20 && pvp) return TIERS.moderate;
+    return TIERS.bad;
+  }
+
+  /**
    * Validate an IV value: integer within 0..15.
    * @returns {boolean}
    */
@@ -94,6 +147,6 @@ const PgoCalc = (() => {
   }
 
   // Public API
-  return { computeCP, computeStats, findLevelsForCP, bestLevelForCap, isValidIV };
+  return { computeCP, computeStats, findLevelsForCP, bestLevelForCap, rateLeague, hasPvpIVs, isValidIV, TIERS };
 
 })();

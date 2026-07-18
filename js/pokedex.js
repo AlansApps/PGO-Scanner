@@ -21,7 +21,7 @@
 const Pokedex = (() => {
 
   const API_BASE = 'https://pogoapi.net/api/v1/';
-  const CACHE_KEY = 'pgo-scanner-pokedex-v1';
+  const CACHE_KEY = 'pgo-scanner-pokedex-v2'; // v2: + pokemon_evolutions
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // refresh weekly
 
   /**
@@ -60,6 +60,9 @@ const Pokedex = (() => {
 
   /** @type {Array<{level:number, multiplier:number}>} */
   let cpmTable = [];
+
+  /** @type {Map<string, Array<object>>} "id|form" -> raw evolution list */
+  let evoByKey = new Map();
 
   let loaded = false;
 
@@ -112,8 +115,15 @@ const Pokedex = (() => {
   }
 
   /** Build the in-memory indexes from the raw API payloads. */
-  function buildIndexes(stats, types, cpm) {
+  function buildIndexes(stats, types, cpm, evolutions) {
     byName = new Map();
+
+    // Evolution lookup by (id, form). Entries may carry gender_required,
+    // item_required etc. — kept raw and interpreted at chain-walk time.
+    evoByKey = new Map();
+    for (const e of evolutions || []) {
+      evoByKey.set(`${e.pokemon_id}|${e.form}`, e.evolutions || []);
+    }
 
     // Index types by "id|form" for a quick join with the stats list.
     const typeByKey = new Map();
@@ -169,7 +179,7 @@ const Pokedex = (() => {
       if (raw) {
         const cached = JSON.parse(raw);
         if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
-          buildIndexes(cached.stats, cached.types, cached.cpm);
+          buildIndexes(cached.stats, cached.types, cached.cpm, cached.evolutions);
           return;
         }
       }
@@ -178,17 +188,18 @@ const Pokedex = (() => {
     }
 
     // 2) Fetch fresh data
-    const [stats, types, cpm] = await Promise.all([
+    const [stats, types, cpm, evolutions] = await Promise.all([
       fetchJson('pokemon_stats.json'),
       fetchJson('pokemon_types.json'),
       fetchJson('cp_multiplier.json'),
+      fetchJson('pokemon_evolutions.json'),
     ]);
 
-    buildIndexes(stats, types, cpm);
+    buildIndexes(stats, types, cpm, evolutions);
 
     // 3) Save cache (best effort — localStorage can be full/blocked)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), stats, types, cpm }));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), stats, types, cpm, evolutions }));
     } catch (_) { /* non-fatal */ }
   }
 
@@ -254,6 +265,40 @@ const Pokedex = (() => {
     return null; // ambiguous — let the user choose
   }
 
+  /**
+   * All future evolutions of a form entry (whole chain, including
+   * branches — e.g. Kirlia returns both Gardevoir and Gallade, and
+   * Mankey returns Primeape then Annihilape).
+   * @param {object} formEntry - an entry from getForms()
+   * @returns {Array<object>} resolved entries ({id, name, form, base,
+   *          types, genderRequired}) in chain order; [] if none
+   */
+  function getEvolutionChain(formEntry) {
+    const out = [];
+    const seen = new Set([`${formEntry.id}|${formEntry.form}`]);
+    const queue = [formEntry];
+
+    while (queue.length) {
+      const current = queue.shift();
+      const evolutions = evoByKey.get(`${current.id}|${current.form}`) || [];
+      for (const evo of evolutions) {
+        const key = `${evo.pokemon_id}|${evo.form}`;
+        if (seen.has(key)) continue; // cycle/duplicate guard
+        seen.add(key);
+
+        // Resolve the evolved species to its stats entry, matching the
+        // exact form when possible (regional lines keep their region).
+        const forms = byName.get(normalizeName(evo.pokemon_name)) || [];
+        const resolved = forms.find((f) => f.form === evo.form) || forms[0];
+        if (!resolved) continue; // species missing from stats data
+
+        out.push({ ...resolved, genderRequired: evo.gender_required || null });
+        queue.push(resolved);
+      }
+    }
+    return out;
+  }
+
   /** Find type words (e.g. "NORMAL", "Fire") inside raw OCR text. */
   function detectTypesInText(text) {
     const found = [];
@@ -274,6 +319,7 @@ const Pokedex = (() => {
     normalizeName,
     matchName,
     getForms,
+    getEvolutionChain,
     pickFormByTypes,
     detectTypesInText,
     ALL_TYPES,

@@ -330,6 +330,40 @@ body {
 .derived-content { font-size: 0.88rem; line-height: 1.55; }
 .derived-content .stat-line strong { color: var(--red-dark); }
 
+/* ---- League rating rows (one per evolution stage) ----
+   Row background/border = the stage's BEST tier across both leagues;
+   each league chip is colored by its own tier. */
+.evo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border-left: 4px solid transparent;
+}
+.evo-name { font-weight: 800; margin-right: auto; }
+
+.league-chip {
+  font-size: 0.78rem;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+}
+
+/* Tier palette: strong green / light green / yellow / red */
+.evo-row.tier-excellent { background: #dff3e6; border-left-color: #1d8a4e; }
+.evo-row.tier-good      { background: #eef7df; border-left-color: #7cb342; }
+.evo-row.tier-moderate  { background: #fdf5d7; border-left-color: #e0a800; }
+.evo-row.tier-bad       { background: #fbe7e7; border-left-color: #d84c4c; }
+
+.league-chip.tier-excellent { color: #14663a; border: 1px solid #1d8a4e; }
+.league-chip.tier-good      { color: #4d7c17; border: 1px solid #7cb342; }
+.league-chip.tier-moderate  { color: #8a6a00; border: 1px solid #e0a800; }
+.league-chip.tier-bad       { color: #a33030; border: 1px solid #d84c4c; }
+
 .result-actions {
   margin-top: 14px;
   display: flex;
