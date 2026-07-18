@@ -63,8 +63,10 @@ const IvBars = (() => {
   /**
    * Find horizontal bar-like segments in a single pixel row.
    * A segment is a run of FILL/EMPTY pixels where interruptions
-   * (white block separators) are shorter than maxGap.
-   * @returns {Array<{x0:number, x1:number, fill:number, empty:number}>}
+   * (white block separators) are shorter than maxGap. Red fill pixels
+   * are counted separately: a RED bar is the game's maxed-stat (15)
+   * rendering, and telling red from orange decides 14 vs 15.
+   * @returns {Array<{x0:number, x1:number, fill:number, red:number, empty:number}>}
    */
   function findRowSegments(data, width, y, maxGap, minLen) {
     const segments = [];
@@ -73,13 +75,19 @@ const IvBars = (() => {
 
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
-      const cls = classifyPixel(data[i], data[i + 1], data[i + 2]);
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const cls = classifyPixel(r, g, b);
 
       if (cls === PX.FILL || cls === PX.EMPTY) {
-        if (!seg) seg = { x0: x, x1: x, fill: 0, empty: 0 };
+        if (!seg) seg = { x0: x, x1: x, fill: 0, red: 0, empty: 0 };
         seg.x1 = x;
         gap = 0;
-        if (cls === PX.FILL) seg.fill++; else seg.empty++;
+        if (cls === PX.FILL) {
+          seg.fill++;
+          if (COLOR.isRed(r, g, b)) seg.red++;
+        } else {
+          seg.empty++;
+        }
       } else if (seg && gap < maxGap) {
         // Tolerate short interruptions: white block separators AND
         // anti-aliased edge pixels between color zones.
@@ -115,10 +123,11 @@ const IvBars = (() => {
         if (bar) {
           bar.y1 = y;
           bar.fill += seg.fill;
+          bar.red += seg.red;
           bar.empty += seg.empty;
           bar.rows++;
         } else {
-          bars.push({ x0: seg.x0, x1: seg.x1, y0: y, y1: y, fill: seg.fill, empty: seg.empty, rows: 1 });
+          bars.push({ x0: seg.x0, x1: seg.x1, y0: y, y1: y, fill: seg.fill, red: seg.red, empty: seg.empty, rows: 1 });
         }
       }
     }
@@ -150,15 +159,23 @@ const IvBars = (() => {
     return null;
   }
 
-  /** Convert a bar's fill ratio into an IV value (0..15). */
+  /**
+   * Convert a bar's fill measurements into an IV value (0..15).
+   * Color rules taught by real screenshots (see docs/IV-VISUAL-GUIDE.md):
+   *   - a maxed stat (15) is ALWAYS a full RED bar;
+   *   - an ORANGE bar is therefore never 15 -> capped at 14, even when
+   *     the thin gray tip of a 14 gets lost at low resolutions;
+   *   - any real orange at all is at least 1 -> the tiny sliver of an
+   *     IV-1 must not be rounded away (Shinx 1/1/2 regression).
+   */
   function barToIV(bar) {
     const total = bar.fill + bar.empty;
     if (total === 0) return null;
     const ratio = bar.fill / total;
-    // Snap the extremes hard: a hundo bar is 100% red, an empty bar 100% gray.
-    if (ratio >= 0.97) return 15;
-    if (ratio <= 0.03) return 0;
-    return Math.max(0, Math.min(15, Math.round(ratio * 15)));
+    const mostlyRed = bar.red > bar.fill / 2;
+    if (mostlyRed) return 15;
+    if (bar.fill === 0 || ratio <= 0.005) return 0;
+    return Math.max(1, Math.min(14, Math.round(ratio * 15)));
   }
 
   /**

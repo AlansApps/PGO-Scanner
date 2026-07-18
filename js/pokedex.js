@@ -365,15 +365,29 @@ const Pokedex = (() => {
     return out;
   }
 
-  /** Find type words (e.g. "NORMAL", "Fire") inside raw OCR text. */
+  /**
+   * Find type words (e.g. "NORMAL", "Fire") inside raw OCR text.
+   * Besides exact word matches, words of >= 4 letters may fuzzy-match a
+   * type name with one edit — the trainer avatar often covers the tail
+   * of the word on screen ("POISO", "FLYIN").
+   */
   function detectTypesInText(text) {
-    const found = [];
+    const found = new Set();
     for (const type of ALL_TYPES) {
       // Word-boundary match, case-insensitive.
       const re = new RegExp(`\\b${type}\\b`, 'i');
-      if (re.test(text)) found.push(type);
+      if (re.test(text)) found.add(type);
     }
-    return found;
+    for (const word of String(text).split(/[^A-Za-z]+/)) {
+      if (word.length < 4) continue;
+      const w = word.toLowerCase();
+      for (const type of ALL_TYPES) {
+        const t = type.toLowerCase();
+        // Accept a truncated prefix (>=4 chars) or a 1-edit misread.
+        if (t.startsWith(w) || levenshtein(w, t) <= 1) { found.add(type); break; }
+      }
+    }
+    return [...found];
   }
 
   // Public API

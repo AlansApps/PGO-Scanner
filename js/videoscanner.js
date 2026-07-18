@@ -88,6 +88,28 @@ const VideoScanner = (() => {
   }
 
   /**
+   * Most frequent non-null value among per-frame reads, requiring at
+   * least minCount occurrences (agreement across frames). Returns null
+   * when nothing reaches the threshold.
+   */
+  function majorityValue(reads, minCount = 2) {
+    const counts = new Map();
+    for (const r of reads) {
+      if (r !== null && r !== undefined) counts.set(r, (counts.get(r) || 0) + 1);
+    }
+    let best = null;
+    for (const [value, count] of counts) {
+      if (count >= minCount && (best === null || count > counts.get(best))) best = value;
+    }
+    return best;
+  }
+
+  /** Alias with name-specific semantics (see majorityValue). */
+  function majorityName(reads, minCount) {
+    return majorityValue(reads, minCount);
+  }
+
+  /**
    * Decide the CP from several per-frame OCR readings.
    *
    * Rules, in order:
@@ -103,15 +125,24 @@ const VideoScanner = (() => {
    * Plausibility is only a sanity FILTER on OCR candidates; it never
    * invents or modifies a value.
    */
-  function decideCP(reads, name, ivs) {
+  function decideCP(reads, name, ivs, hpShown = null) {
     const nonNull = reads.filter((r) => r !== null);
     if (!nonNull.length) return null;
 
-    // A CP is plausible if any form of the species can reach it at some level.
+    // A CP is plausible if some form of the species reaches it at some
+    // level — and when the shown max HP was read too, THE SAME LEVEL
+    // must also reproduce that HP. This alignment across independent
+    // readings kills most OCR misreads (e.g. a CP that only fits at
+    // level 1 while the HP says the Pokémon is level 16).
     const forms = name ? Pokedex.getForms(name) : [];
     const isPlausible = (cp) =>
       !forms.length ||
-      forms.some((f) => PgoCalc.findLevelsForCP(f.base, ivs, cp, Pokedex.cpmTable).length > 0);
+      forms.some((f) =>
+        PgoCalc.findLevelsForCP(f.base, ivs, cp, Pokedex.cpmTable).some((row) =>
+          hpShown === null ||
+          Math.max(Math.floor((f.base.stamina + ivs.hp) * row.multiplier), 10) === hpShown
+        )
+      );
 
     // Rule 1: majority
     const counts = new Map();
@@ -184,42 +215,136 @@ const VideoScanner = (() => {
       const tMid = (g.tStart + g.tEnd) / 2;
       const ivs = { atk: g.ivs[0], def: g.ivs[1], hp: g.ivs[2] };
 
-      // Name once, on the middle frame (also used for the thumbnail).
-      await seekTo(video, tMid);
-      ctx.drawImage(video, 0, 0, W, H);
-      const previewUrl = frame.toDataURL('image/jpeg', 0.7);
-      const name = await Scanner.ocrNameBand(frame);
-      const cpReads = [await Scanner.ocrCPBand(frame)];
+      // Sample times spread across the group: every field is read on
+      // SEVERAL frames and decided by voting — a moving/compressed
+      // video corrupts single frames far too often to trust one read.
+      // Start with 3 frames; when any field fails to reach agreement,
+      // ADAPTIVELY sample 2 more and re-vote.
+      const baseTimes = [...new Set([g.tStart, tMid, g.tEnd])];
+      const extraTimes = [...new Set([
+        g.tStart + (g.tEnd - g.tStart) * 0.25,
+        g.tStart + (g.tEnd - g.tStart) * 0.75,
+      ])].filter((t) => !baseTimes.includes(t));
 
-      // CP on two more frames of the group; decideCP votes among them.
-      for (const t of [g.tStart, g.tEnd]) {
-        if (t === tMid) continue;
+      const nameReads = [];
+      const cpReads = [];
+      const hpReads = [];
+      let previewUrl = null;
+      const readFrame = async (t) => {
         await seekTo(video, t);
         ctx.drawImage(video, 0, 0, W, H);
+        if (previewUrl === null || t === tMid) previewUrl = frame.toDataURL('image/jpeg', 0.7);
+        nameReads.push(await Scanner.ocrNameBand(frame));
         cpReads.push(await Scanner.ocrCPBand(frame));
-      }
-      const cp = decideCP(cpReads, name, ivs);
+        hpReads.push(await Scanner.ocrHpBand(frame));
+      };
+      for (const t of baseTimes) await readFrame(t);
 
-      // Resolve the form only when the species has exactly one
-      // FUNCTIONALLY distinct form (cosmetic variants collapse; video
-      // frames skip the full-image type OCR — too slow per frame).
+      const decideFields = () => ({
+        name: majorityName(nameReads, nameReads.length > 1 ? 2 : 1),
+        hpShown: majorityValue(hpReads, 2),
+        cpMajority: majorityValue(cpReads, 2),
+      });
+      let fields = decideFields();
+      if ((!fields.name || fields.cpMajority === null || fields.hpShown === null) && extraTimes.length) {
+        for (const t of extraTimes) await readFrame(t);
+        fields = decideFields();
+      }
+
+      // Name: even though reads are Pokédex-validated, a single read
+      // among several is not trusted for DISPLAY (early/transition
+      // frames produce junk that can fuzzy-match some species) —
+      // require agreement. A lone read still serves as a HINT for the
+      // CP plausibility filter (better one probable species than none).
+      const name = fields.name;
+      const nameHint = name || majorityValue(nameReads, 1);
+
+      // Shown max HP: strong cross-check for the CP decision below.
+      const hpShown = fields.hpShown;
+      const times = baseTimes; // escalation passes reuse the base frames
+
+      // CP: vote + plausibility (CP AND shown HP must agree on a level).
+      // When that fails, ESCALATE with a stricter binarization pass
+      // (kills the light rays behind Lucky cards that OCR as extra
+      // digits, e.g. CP 540 read as 1540).
+      // With NO species at all the CP cannot be validated — leave it
+      // blank rather than trust an unverifiable OCR number.
+      let cp = null;
+      if (nameHint) {
+        cp = decideCP(cpReads, nameHint, ivs, hpShown);
+        if (cp === null) {
+          for (const t of times) {
+            await seekTo(video, t);
+            ctx.drawImage(video, 0, 0, W, H);
+            cpReads.push(await Scanner.ocrCPBand(frame, 235));
+          }
+          cp = decideCP(cpReads, nameHint, ivs, hpShown);
+        }
+      }
+
+      // Form: cosmetic variants collapse automatically; when several
+      // REAL forms exist, read the type row across the sampled frames
+      // and pick by the union of detected types (Grimer "POISON" =
+      // Normal vs Alolan "POISON / DARK").
       let form = null;
       if (name) {
         const forms = Pokedex.getDistinctForms(name);
-        if (forms.length === 1) form = forms[0];
+        if (forms.length === 1) {
+          form = forms[0];
+        } else if (forms.length > 1) {
+          const types = new Set();
+          for (const t of times) {
+            await seekTo(video, t);
+            ctx.drawImage(video, 0, 0, W, H);
+            for (const ty of await Scanner.ocrTypeBand(frame)) types.add(ty);
+          }
+          form = Pokedex.pickFormByTypes(forms, [...types]);
+        }
       }
 
-      entries.push({ name, form, cp, ivs, time: tMid, previewUrl });
+      entries.push({ name, form, cp, ivs, time: tMid, previewUrl, frames: g.count });
     }
 
-    // ---- Pass 4: merge adjacent exact duplicates --------------------------
-    // (bar flicker can split one card into two identical groups)
+    // ---- Pass 4: merge adjacent duplicates and animation artifacts --------
+    // Exact duplicates: bar flicker can split one card into two groups.
+    // Animation artifacts: when the appraisal panel opens, the bars
+    // ANIMATE (fill up, sometimes overshoot and settle back); a sample
+    // during that produces a short-lived bogus group. Signature: same
+    // card (name/CP compatible), close in time, IVs either monotonically
+    // below the settled group or within a small delta — and crucially
+    // the artifact group is SHORT (few stable frames) while a really
+    // viewed card holds for longer. Never merge two long groups: the
+    // same species seen twice with similar IVs is two real Pokémon.
+    const compatible = (a, b) =>
+      (!a.name || !b.name || a.name === b.name) &&
+      (a.cp === null || b.cp === null || a.cp === b.cp) &&
+      (b.time - a.time) <= 6;
+    const ivsClose = (a, b) => {
+      const monotone = a.ivs.atk <= b.ivs.atk && a.ivs.def <= b.ivs.def && a.ivs.hp <= b.ivs.hp;
+      const small = Math.max(
+        Math.abs(a.ivs.atk - b.ivs.atk),
+        Math.abs(a.ivs.def - b.ivs.def),
+        Math.abs(a.ivs.hp - b.ivs.hp)
+      ) <= 3;
+      return monotone || small;
+    };
+    const SHORT = 2; // groups this short are animation-artifact suspects
+
     const deduped = [];
     for (const e of entries) {
       const prev = deduped[deduped.length - 1];
-      const same = prev && prev.name === e.name && prev.cp === e.cp &&
-        prev.ivs.atk === e.ivs.atk && prev.ivs.def === e.ivs.def && prev.ivs.hp === e.ivs.hp;
-      if (!same) deduped.push(e);
+      if (prev) {
+        const exactDup = prev.name === e.name && prev.cp === e.cp &&
+          prev.ivs.atk === e.ivs.atk && prev.ivs.def === e.ivs.def && prev.ivs.hp === e.ivs.hp;
+        if (exactDup) continue;
+        if (compatible(prev, e) && ivsClose(prev, e) &&
+            (prev.frames <= SHORT) !== (e.frames <= SHORT)) {
+          // Keep the settled (longer) group, drop the artifact.
+          if (prev.frames <= SHORT) deduped[deduped.length - 1] = e;
+          continue;
+        }
+      }
+      deduped.push(e);
     }
 
     Scanner.setOcrSetupHook(null);

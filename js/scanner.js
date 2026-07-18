@@ -35,6 +35,26 @@ const Scanner = (() => {
     scale: 3,
   };
 
+  // HP band: the "118 / 118 HP" line under the green HP bar. The max HP
+  // is a strong cross-check: CP + IVs + shown HP must agree on a level.
+  const HP_BAND = {
+    x: 0.28, w: 0.44,
+    y: 0.452, h: 0.035,
+    scale: 4,
+    darkThreshold: 180, // dark gray digits on white card
+  };
+
+  // Type band: the label line with the type word(s) ("GHOST / FLYING"),
+  // measured at y ~0.605-0.628 of the screen. The right side is often
+  // covered by the trainer avatar — truncated words are handled by
+  // fuzzy type matching (Pokedex.detectTypesInText).
+  const TYPE_BAND = {
+    x: 0.22, w: 0.56,
+    y: 0.596, h: 0.04,
+    scale: 4,
+    darkThreshold: 200, // label text is gray: lum < this -> black
+  };
+
   /**
    * Hook the current scan can set to surface OCR engine setup progress.
    * On a phone's first scan Tesseract downloads ~15 MB (wasm core +
@@ -97,8 +117,10 @@ const Scanner = (() => {
    * Calibrated against real iPhone screenshots (see CALIBRATION.md).
    * @returns {Promise<number|null>}
    */
-  async function ocrCPBand(source) {
-    const canvas = cropBand(source, CP_BAND, CP_BAND.whiteThreshold);
+  async function ocrCPBand(source, whiteThreshold = CP_BAND.whiteThreshold) {
+    // A stricter threshold (e.g. 235) suppresses bright-background noise
+    // such as the light rays behind Lucky Pokémon cards.
+    const canvas = cropBand(source, CP_BAND, whiteThreshold);
 
     const worker = await getWorker();
     await worker.setParameters({
@@ -138,6 +160,66 @@ const Scanner = (() => {
     const raw = (data.text || '').replace(/[^A-Za-z' .-]/g, '').trim();
     const match = Pokedex.matchName(raw);
     return match ? match.name : null;
+  }
+
+  /**
+   * Read the displayed max HP from the "118 / 118 HP" line.
+   * @returns {Promise<number|null>} the max HP (second number), or null
+   */
+  async function ocrHpBand(source) {
+    const canvas = cropBand(source, HP_BAND, 0);
+
+    // Binarize for DARK text on the white card.
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      const v = lum < HP_BAND.darkThreshold ? 0 : 255;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const worker = await getWorker();
+    await worker.setParameters({
+      tessedit_char_whitelist: '0123456789/HP ',
+      tessedit_pageseg_mode: '7',
+    });
+    const { data } = await worker.recognize(canvas);
+
+    const m = (data.text || '').match(/(\d{1,4})\s*\/\s*(\d{1,4})/);
+    if (!m) return null;
+    const hp = parseInt(m[2], 10);
+    return hp >= 10 && hp <= 999 ? hp : null;
+  }
+
+  /**
+   * Read the type word(s) from the type row ("POISON / FLYING") and
+   * return the recognized type names. Used to disambiguate regional
+   * forms in video scans (photos use the full-image pass instead).
+   * @returns {Promise<Array<string>>} e.g. ["Poison"] — [] when unreadable
+   */
+  async function ocrTypeBand(source) {
+    const canvas = cropBand(source, TYPE_BAND, 0);
+
+    // Binarize for DARK text: the gray labels sit on a pale gradient.
+    const ctx = canvas.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = (d[i] + d[i + 1] + d[i + 2]) / 3;
+      const v = lum < TYPE_BAND.darkThreshold ? 0 : 255;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const worker = await getWorker();
+    await worker.setParameters({
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ/ ',
+      tessedit_pageseg_mode: '7', // single text line
+    });
+    const { data } = await worker.recognize(canvas);
+    return Pokedex.detectTypesInText(data.text || '');
   }
 
   /**
@@ -291,7 +373,14 @@ const Scanner = (() => {
     let form = null;
     if (name) {
       const forms = Pokedex.getDistinctForms(name);
-      if (forms.length === 1) form = forms[0];
+      if (forms.length === 1) {
+        form = forms[0];
+      } else if (forms.length > 1) {
+        // Multiple real forms: read the type row to pick (e.g. Grimer
+        // "POISON" = Normal vs Alolan "POISON / DARK").
+        const types = await ocrTypeBand(source);
+        form = Pokedex.pickFormByTypes(forms, types);
+      }
     }
 
     return {
@@ -307,6 +396,6 @@ const Scanner = (() => {
   function setOcrSetupHook(fn) { ocrSetupHook = fn; }
 
   // Public API (band OCR helpers are reused by the video scanner)
-  return { scanImage, scanFrame, ocrCPBand, ocrNameBand, setOcrSetupHook };
+  return { scanImage, scanFrame, ocrCPBand, ocrNameBand, ocrHpBand, ocrTypeBand, setOcrSetupHook };
 
 })();

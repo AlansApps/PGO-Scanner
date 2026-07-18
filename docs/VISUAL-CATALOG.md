@@ -39,15 +39,15 @@ Seen and learned (11):
 - [x] Rock — khaki/brown circle, boulder glyph (Lileep) — 2026-07-18 video batch
 - [x] Electric — mustard-yellow circle, lightning bolt glyph (Shinx) — 2026-07-18 video batch
 - [x] Steel — gray-green circle, gear/ring glyph (Bronzor) — 2026-07-18 video batch
+- [x] Dark — charcoal-gray circle, crescent glyph (Purrloin) — 2026-07-18 Unova video
+- [x] Ground — orange-tan circle, mountain glyph (Drilbur) — 2026-07-18 Unova video
+- [x] Fairy — pink circle (Cottonee, second icon) — 2026-07-18 Unova video
+- [x] Fire — orange circle, flame glyph (Darumaka) — 2026-07-18 Unova video
+- [x] Bug — yellow-green circle, beetle glyph (Dwebble) — 2026-07-18 Unova video
 
-Still needed — send one screenshot containing each (7):
-- [ ] Fire
-- [ ] Ice
-- [ ] Ground
-- [ ] Bug
-- [ ] Dragon
-- [ ] Dark
-- [ ] Fairy
+Still needed — send one screenshot containing each (2):
+- [ ] Ice (e.g. Swinub, Snorunt, Alolan Vulpix)
+- [ ] Dragon (e.g. Dratini, Bagon, Gible)
 
 Additional traps learned (2026-07-18 videos):
 - LUCKY Pokémon show a gold "Lucky Pokémon" label under the name and a
