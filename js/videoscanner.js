@@ -160,10 +160,11 @@ const VideoScanner = (() => {
       const cp = decideCP(cpReads, name, ivs);
 
       // Resolve the form only when the species has exactly one
-      // (video frames skip the full-image type OCR — too slow per frame).
+      // FUNCTIONALLY distinct form (cosmetic variants collapse; video
+      // frames skip the full-image type OCR — too slow per frame).
       let form = null;
       if (name) {
-        const forms = Pokedex.getForms(name);
+        const forms = Pokedex.getDistinctForms(name);
         if (forms.length === 1) form = forms[0];
       }
 

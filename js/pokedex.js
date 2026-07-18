@@ -266,6 +266,39 @@ const Pokedex = (() => {
   }
 
   /**
+   * Signature of what makes a form FUNCTIONALLY different in battle:
+   * base stats + type set. Forms sharing a signature are cosmetic-only
+   * variants (Shellos East/West Sea, costumes, real-world-region colors).
+   */
+  function formSignature(entry) {
+    return `${entry.base.attack}|${entry.base.defense}|${entry.base.stamina}|` +
+      [...entry.types].sort().join(',');
+  }
+
+  /**
+   * The species' functionally distinct forms only: cosmetic variants
+   * collapse into one representative (preferring the "Normal" form).
+   * E.g. Shellos -> 1 entry; Raichu -> 2 (Normal + Alola);
+   * Deoxys -> all 4 (same types, different stats).
+   */
+  function getDistinctForms(displayName) {
+    const bySig = new Map();
+    for (const f of getForms(displayName)) {
+      const sig = formSignature(f);
+      const existing = bySig.get(sig);
+      if (!existing || (existing.form !== 'Normal' && f.form === 'Normal')) {
+        bySig.set(sig, f);
+      }
+    }
+    return [...bySig.values()];
+  }
+
+  /** True when the species has more than one functionally distinct form. */
+  function hasSignificantForms(displayName) {
+    return getDistinctForms(displayName).length > 1;
+  }
+
+  /**
    * All future evolutions of a form entry (whole chain, including
    * branches — e.g. Kirlia returns both Gardevoir and Gallade, and
    * Mankey returns Primeape then Annihilape).
@@ -319,6 +352,8 @@ const Pokedex = (() => {
     normalizeName,
     matchName,
     getForms,
+    getDistinctForms,
+    hasSignificantForms,
     getEvolutionChain,
     pickFormByTypes,
     detectTypesInText,

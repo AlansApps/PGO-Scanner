@@ -56,6 +56,19 @@ pure Electric; Alolan Raichu is Electric/Psychic. The type icons visible
 on screen are the key to picking the right form when the name alone is
 ambiguous. All Pokédex lookups in this app are keyed by (name + form).
 
+Two kinds of "regional" — do not confuse them:
+- POKÉMON-WORLD regional forms (Alolan/Galarian/Hisuian/Paldean):
+  different types and/or stats. These MATTER: shown bold, kept distinct,
+  and their evolutions stay regional.
+- COSMETIC variants: real-world catch region colors (Shellos East/West
+  Sea), costumes, appearance-only forms. Same stats, same types — they
+  change NOTHING in battle. The app collapses them automatically
+  (`Pokedex.getDistinctForms`: forms are equivalent iff base stats AND
+  type set match), never asks the user to choose between them, and never
+  displays them. Data-driven, no hardcoded list — e.g. Pikachu's 50
+  costume forms collapse to 1, while Deoxys' 4 forms stay distinct
+  (same types but different stats).
+
 ## Gender notes (affects evolutions)
 Gender is scrapeable from the ♂/♀ symbol. It matters for:
 - Kirlia: male → Gallade (Sinnoh Stone); Snorunt: female → Froslass

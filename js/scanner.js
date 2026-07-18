@@ -234,10 +234,12 @@ const Scanner = (() => {
     const name = parseName(text);
     const detectedTypes = Pokedex.detectTypesInText(text);
 
-    // Resolve the form (Normal / Alolan / Galarian / Hisuian / ...)
+    // Resolve the form (Normal / Alolan / Galarian / Hisuian / ...).
+    // Only FUNCTIONALLY distinct forms are considered — cosmetic-only
+    // variants (Shellos East/West, costumes) collapse automatically.
     let form = null;
     if (name) {
-      const forms = Pokedex.getForms(name);
+      const forms = Pokedex.getDistinctForms(name);
       form = Pokedex.pickFormByTypes(forms, detectedTypes);
     }
 
@@ -267,7 +269,7 @@ const Scanner = (() => {
 
     let form = null;
     if (name) {
-      const forms = Pokedex.getForms(name);
+      const forms = Pokedex.getDistinctForms(name);
       if (forms.length === 1) form = forms[0];
     }
 

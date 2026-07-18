@@ -276,10 +276,12 @@
     els.resultSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  /** Rebuild the form/variant <select> for the current species name. */
+  /** Rebuild the form/variant <select> for the current species name.
+   *  Only functionally distinct forms are offered — cosmetic variants
+   *  (Shellos East/West, costumes) never require a choice. */
   function refreshFormOptions(selectedForm) {
     const name = els.nameInput.value.trim();
-    const forms = name ? Pokedex.getForms(name) : [];
+    const forms = name ? Pokedex.getDistinctForms(name) : [];
 
     els.formSelect.innerHTML = '';
     if (!forms.length) {
@@ -375,9 +377,8 @@
       // Row highlight = the BEST tier across the two leagues.
       const rowTier = perLeague.reduce((a, b) => (a.tier.rank >= b.tier.rank ? a : b)).tier;
 
-      // Stage title: append non-Normal form and gender requirement.
-      let title = stage.name;
-      if (stage.form && stage.form !== 'Normal') title += ` (${stage.form})`;
+      // Stage title: append the form only when it matters + gender req.
+      let title = stage.name + formTitleHtml(stage.name, stage.form).replace(/<\/?strong>/g, '');
       if (stage.genderRequired) title += ` — ${stage.genderRequired.toLowerCase()} only`;
 
       // Pill format: "Great: BAD | 1495 (19)" = closest CP (target level).
@@ -476,11 +477,18 @@
     renderCollection();
   }
 
-  /** "Alola" -> bold "(Alolan)"; other non-Normal forms -> plain "(East sea)". */
-  function formTitleHtml(form) {
+  /**
+   * Form suffix for display. Pokémon-world regional forms (different
+   * types/stats) are shown BOLD; other functionally distinct forms
+   * (Giratina Origin, Necrozma Dusk Mane, ...) shown in regular weight;
+   * cosmetic-only variants (Shellos East/West, costumes, real-world
+   * region colors) are hidden entirely.
+   */
+  function formTitleHtml(name, form) {
     if (!form || form === 'Normal') return '';
     const regional = REGIONAL_FORMS[form];
     if (regional) return ` <strong>(${regional})</strong>`;
+    if (Pokedex.isLoaded && !Pokedex.hasSignificantForms(name)) return '';
     return ` (${form.replace(/_/g, ' ')})`;
   }
 
@@ -510,7 +518,7 @@
       });
       const rowTier = perLeague.reduce((a, b) => (a.tier.rank >= b.tier.rank ? a : b)).tier;
 
-      let title = stage.name + formTitleHtml(stage.form).replace(/<\/?strong>/g, '');
+      let title = stage.name + formTitleHtml(stage.name, stage.form).replace(/<\/?strong>/g, '');
       if (stage.genderRequired) title += ` — ${stage.genderRequired.toLowerCase()} only`;
 
       // Pill format: "Great: BAD | 1495 (19)" = closest CP (target level).
@@ -543,7 +551,7 @@
       title.className = 'ci-title';
       const lvl = e.levels.length ? e.levels.join('/') : '?';
       title.innerHTML =
-        `<strong>${e.name}</strong>${formTitleHtml(e.form)} ` +
+        `<strong>${e.name}</strong>${formTitleHtml(e.name, e.form)} ` +
         `(CP ${e.cp}) - IVs ${e.ivs.atk}/${e.ivs.def}/${e.ivs.hp} · Lvl: ${lvl}`;
       if (e.batchId && e.batchId === lastBatch) {
         title.innerHTML += ' <span class="new-badge">NEW</span>';
