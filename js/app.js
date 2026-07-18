@@ -14,6 +14,23 @@
 (() => {
 
   const STORAGE_KEY = 'pgo-scanner-collection-v1';
+  const LAST_BATCH_KEY = 'pgo-scanner-last-batch-v1';
+
+  /**
+   * Regional form -> display adjective. Any form in this map is shown
+   * BOLD next to the name (e.g. "Raichu (Alolan)"); other non-Normal
+   * forms (East Sea, Origin, ...) are shown in regular weight.
+   */
+  const REGIONAL_FORMS = {
+    Alola: 'Alolan',
+    Alolan: 'Alolan',
+    Galarian: 'Galarian',
+    Galar: 'Galarian',
+    Hisuian: 'Hisuian',
+    Hisui: 'Hisuian',
+    Paldea: 'Paldean',
+    Paldean: 'Paldean',
+  };
 
   // ---- DOM references ----------------------------------------------------
   const $ = (id) => document.getElementById(id);
@@ -50,11 +67,28 @@
   let currentScan = null;
 
   /**
-   * Review queue for video scans: each detected Pokémon is reviewed
-   * one at a time with the same result form used for photos.
+   * Review queue for scans that need manual completion: each entry is
+   * reviewed one at a time with the result form. Fully-detected scans
+   * skip this queue and go straight to the Scanned Pokémon list.
    */
   let reviewQueue = [];
   let reviewIndex = 0;
+
+  /**
+   * Id of the scan batch being processed/reviewed. Entries saved with
+   * the LAST batch id get the "NEW" tag in the Scanned Pokémon list
+   * (photo = 1 entry; video = every entry of that recording).
+   */
+  let currentBatchId = null;
+
+  function getLastBatchId() {
+    const raw = localStorage.getItem(LAST_BATCH_KEY);
+    return raw ? parseInt(raw, 10) : null;
+  }
+
+  function setLastBatchId(id) {
+    try { localStorage.setItem(LAST_BATCH_KEY, String(id)); } catch (_) { /* non-fatal */ }
+  }
 
   // ---- Pokédex data bootstrap ---------------------------------------------
 
@@ -72,6 +106,7 @@
       els.nameList.appendChild(frag);
       els.dataStatus.textContent = `Pokédex ready — ${Pokedex.names.length} species loaded`;
       els.dataStatus.classList.remove('error');
+      renderCollection(); // saved entries can now show their league rows
     } catch (err) {
       console.error('Pokédex load failed:', err);
       els.dataStatus.textContent = 'Could not load Pokédex data — check your internet connection and reload.';
@@ -126,24 +161,43 @@
     scanning = true;
     showProgress(0, 'Starting scan…');
     try {
+      currentBatchId = Date.now();
       if (isVideo) {
-        // Video: scan the whole recording, then review each result in turn.
+        // Video: scan the whole recording. Fully-detected entries are
+        // saved immediately; only incomplete ones are queued for review.
         const entries = await VideoScanner.scanVideo(file, showProgress);
         hideProgress();
         if (!entries.length) {
           alert('No Pokémon cards detected in this video. Make sure the appraisal bars are visible.');
           return;
         }
-        reviewQueue = entries;
+        reviewQueue = [];
         reviewIndex = 0;
-        showResult(reviewQueue[0]);
+        for (const e of entries) {
+          if (!autoSaveIfComplete(e)) reviewQueue.push(e);
+        }
+        setLastBatchId(currentBatchId);
+        renderCollection();
+        if (reviewQueue.length) {
+          showResult(reviewQueue[0]);
+        } else {
+          els.collectionSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       } else {
-        // Photo: single result.
+        // Photo: single result — auto-save when everything was detected.
         reviewQueue = [];
         reviewIndex = 0;
         const result = await Scanner.scanImage(file, showProgress);
         hideProgress();
-        showResult(result);
+        if (autoSaveIfComplete(result)) {
+          setLastBatchId(currentBatchId);
+          renderCollection();
+          if (result.previewUrl) URL.revokeObjectURL(result.previewUrl);
+          els.collectionSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          setLastBatchId(currentBatchId);
+          showResult(result);
+        }
       }
     } catch (err) {
       console.error('Scan failed:', err);
@@ -152,6 +206,27 @@
     } finally {
       scanning = false;
     }
+  }
+
+  /**
+   * Save a scan without review when EVERYTHING was detected confidently:
+   * species, resolved form, CP, all three IVs, and a level consistent
+   * with that CP. Returns false when any piece is missing — the caller
+   * then opens the review form for manual completion.
+   * @param {object} scan - result from Scanner.scanImage / VideoScanner
+   * @returns {boolean} true when saved automatically
+   */
+  function autoSaveIfComplete(scan) {
+    if (!scan.name || !scan.form || !Number.isInteger(scan.cp) || scan.cp < 10) return false;
+    const { atk, def, hp } = scan.ivs;
+    if (!PgoCalc.isValidIV(atk) || !PgoCalc.isValidIV(def) || !PgoCalc.isValidIV(hp)) return false;
+
+    const entry = { name: scan.name, form: scan.form, cp: scan.cp, ivs: scan.ivs };
+    const levels = PgoCalc.findLevelsForCP(entry.form.base, entry.ivs, entry.cp, Pokedex.cpmTable);
+    if (!levels.length) return false; // CP inconsistent — needs a human look
+
+    saveEntry(entry);
+    return true;
   }
 
   // ---- Progress UI -----------------------------------------------------------
@@ -380,7 +455,9 @@
     const list = loadCollection();
     const levels = PgoCalc.findLevelsForCP(entry.form.base, entry.ivs, entry.cp, Pokedex.cpmTable);
     list.unshift({
-      id: Date.now(),
+      // Random suffix: video batches can save several entries in one ms.
+      id: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      batchId: currentBatchId,
       name: entry.name,
       form: entry.form.form,
       types: entry.form.types,
@@ -398,8 +475,54 @@
     renderCollection();
   }
 
+  /** "Alola" -> bold "(Alolan)"; other non-Normal forms -> plain "(East sea)". */
+  function formTitleHtml(form) {
+    if (!form || form === 'Normal') return '';
+    const regional = REGIONAL_FORMS[form];
+    if (regional) return ` <strong>(${regional})</strong>`;
+    return ` (${form.replace(/_/g, ' ')})`;
+  }
+
+  /**
+   * League rating rows (this Pokémon + every evolution) for one saved
+   * entry. Recomputed at render time from live Pokédex data; returns ''
+   * until the Pokédex has loaded.
+   */
+  function entryEvoRowsHtml(e) {
+    if (!Pokedex.isLoaded) return '';
+    const formEntry = Pokedex.getForms(e.name).find((f) => f.form === e.form);
+    if (!formEntry) return '';
+
+    const cpmMax50 = Pokedex.cpmTable.filter((r) => r.level <= 50);
+    const minLevel = e.levels.length ? Math.min(...e.levels) : null;
+    const stages = [formEntry, ...Pokedex.getEvolutionChain(formEntry)];
+
+    let html = '';
+    for (const stage of stages) {
+      const perLeague = [
+        { name: 'Great', cap: 1500 },
+        { name: 'Ultra', cap: 2500 },
+      ].map(({ name, cap }) => {
+        const best = PgoCalc.bestLevelForCap(stage.base, e.ivs, cap, cpmMax50);
+        const tier = PgoCalc.rateLeague(best, cap, e.ivs, minLevel);
+        return { name, tier };
+      });
+      const rowTier = perLeague.reduce((a, b) => (a.tier.rank >= b.tier.rank ? a : b)).tier;
+
+      let title = stage.name + formTitleHtml(stage.form).replace(/<\/?strong>/g, '');
+      if (stage.genderRequired) title += ` — ${stage.genderRequired.toLowerCase()} only`;
+
+      const chips = perLeague
+        .map(({ name, tier }) => `<span class="league-chip tier-${tier.key}">${name}: <strong>${tier.label}</strong></span>`)
+        .join('');
+      html += `<div class="evo-row evo-row-sm tier-${rowTier.key}"><span class="evo-name">${title}</span>${chips}</div>`;
+    }
+    return html;
+  }
+
   function renderCollection() {
     const list = loadCollection();
+    const lastBatch = getLastBatchId();
     els.collectionSection.classList.toggle('hidden', list.length === 0);
     els.collectionList.innerHTML = '';
 
@@ -407,15 +530,19 @@
       const li = document.createElement('li');
       li.className = 'collection-item';
 
-      const info = document.createElement('div');
+      // Header: "Mankey (CP 679) - IVs 7/4/2 · Lvl: 24" (+ NEW badge)
+      const header = document.createElement('div');
+      header.className = 'ci-header';
+
       const title = document.createElement('div');
-      title.className = 'mon-name';
-      title.textContent = `${e.name}${e.form && e.form !== 'Normal' ? ` (${e.form})` : ''} — CP ${e.cp}`;
-      const meta = document.createElement('div');
-      meta.className = 'mon-meta';
-      const lvl = e.levels.length ? `L${e.levels.join('/')}` : 'level?';
-      meta.textContent = `IVs ${e.ivs.atk}/${e.ivs.def}/${e.ivs.hp} · ${lvl} · ${e.types.join('/')}`;
-      info.append(title, meta);
+      title.className = 'ci-title';
+      const lvl = e.levels.length ? e.levels.join('/') : '?';
+      title.innerHTML =
+        `<strong>${e.name}</strong>${formTitleHtml(e.form)} ` +
+        `(CP ${e.cp}) - IVs ${e.ivs.atk}/${e.ivs.def}/${e.ivs.hp} · Lvl: ${lvl}`;
+      if (e.batchId && e.batchId === lastBatch) {
+        title.innerHTML += ' <span class="new-badge">NEW</span>';
+      }
 
       const del = document.createElement('button');
       del.className = 'delete-btn';
@@ -423,7 +550,18 @@
       del.textContent = '✕';
       del.addEventListener('click', () => deleteEntry(e.id));
 
-      li.append(info, del);
+      header.append(title, del);
+      li.appendChild(header);
+
+      // Body: colored league rows for the Pokémon and its evolutions.
+      const evoHtml = entryEvoRowsHtml(e);
+      if (evoHtml) {
+        const body = document.createElement('div');
+        body.className = 'ci-evos';
+        body.innerHTML = evoHtml;
+        li.appendChild(body);
+      }
+
       els.collectionList.appendChild(li);
     }
   }

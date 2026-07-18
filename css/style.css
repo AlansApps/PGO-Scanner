@@ -383,17 +383,40 @@ body {
 
 .collection-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
   border: 2px solid var(--border);
   border-radius: 12px;
   font-size: 0.92rem;
 }
 
-.collection-item .mon-name { font-weight: 800; }
-.collection-item .mon-meta { color: var(--navy-soft); font-size: 0.82rem; }
+.ci-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ci-title { line-height: 1.4; }
+.ci-title strong { font-weight: 800; }
+
+.new-badge {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #fff;
+  background: var(--red);
+  border-radius: 999px;
+  padding: 2px 8px;
+  vertical-align: middle;
+}
+
+.ci-evos { display: flex; flex-direction: column; }
+
+/* Slightly denser league rows inside the saved list */
+.evo-row-sm { padding: 4px 8px; margin-top: 4px; font-size: 0.84rem; }
+.evo-row-sm .league-chip { font-size: 0.72rem; padding: 1px 8px; }
 
 .collection-item .delete-btn {
   background: none;
