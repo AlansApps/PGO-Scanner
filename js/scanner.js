@@ -157,7 +157,11 @@ const Scanner = (() => {
     });
     const { data } = await worker.recognize(canvas);
 
-    const raw = (data.text || '').replace(/[^A-Za-z' .-]/g, '').trim();
+    // Pokedex.matchName() already normalizes accents internally (NFD
+    // strip), so pass the raw OCR text straight through — filtering to
+    // ASCII here would mangle accented names first (e.g. "Flabébé"
+    // -> "Flabb", unrecognizable). Only trim whitespace/newlines.
+    const raw = (data.text || '').replace(/\s+/g, ' ').trim();
     const match = Pokedex.matchName(raw);
     return match ? match.name : null;
   }

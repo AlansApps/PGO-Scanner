@@ -44,10 +44,10 @@ Seen and learned (11):
 - [x] Fairy — pink circle (Cottonee, second icon) — 2026-07-18 Unova video
 - [x] Fire — orange circle, flame glyph (Darumaka) — 2026-07-18 Unova video
 - [x] Bug — yellow-green circle, beetle glyph (Dwebble) — 2026-07-18 Unova video
+- [x] Dragon — teal/turquoise circle, swirl glyph (Axew) — 2026-07-19 video
+- [x] Ice — light cyan circle, snowflake glyph (Cubchoo) — 2026-07-19 video
 
-Still needed — send one screenshot containing each (2):
-- [ ] Ice (e.g. Swinub, Snorunt, Alolan Vulpix)
-- [ ] Dragon (e.g. Dratini, Bagon, Gible)
+**All 18/18 type icons catalogued.**
 
 Additional traps learned (2026-07-18 videos):
 - LUCKY Pokémon show a gold "Lucky Pokémon" label under the name and a

@@ -33,6 +33,7 @@ const IvBars = (() => {
     minBarRows: 2,          // min sampled rows to accept a bar rectangle
     xAlignTolerance: 0.03,  // bars must be left/right aligned within 3% width
     maxBarSpacingRatio: 0.12, // max vertical distance between stacked bars
+    minBarYRatio: 0.35,     // ignore candidates above this fraction of height
   };
 
   // Color classifiers. Game palette (approx.):
@@ -138,13 +139,26 @@ const IvBars = (() => {
   /**
    * From all candidate bars, find a stack of exactly 3 vertically
    * consecutive, x-aligned bars (Attack / Defense / HP).
+   *
+   * Bars above CONFIG.minBarYRatio of the image are ignored outright:
+   * the CP text, status bar and background art near the top of the
+   * screen can occasionally form a spurious "3 aligned bars" pattern
+   * (observed: a red clock badge + gradient noise misread as a full
+   * IV triplet). The real appraisal panel is always well below that
+   * line in every screenshot/video layout seen so far.
+   *
+   * When several valid triplets remain, the WIDEST one wins (an
+   * accidental match from thin noise is very unlikely to span as much
+   * width as the real bars, which stretch most of the card).
    * @returns {Array<object>|null} the 3 bars top-to-bottom, or null
    */
   function findBarTriplet(bars, width, height) {
     const tol = width * CONFIG.xAlignTolerance;
     const maxSpacing = height * CONFIG.maxBarSpacingRatio;
-    const sorted = [...bars].sort((a, b) => a.y0 - b.y0);
+    const minY = height * CONFIG.minBarYRatio;
+    const sorted = bars.filter((b) => b.y0 >= minY).sort((a, b) => a.y0 - b.y0);
 
+    let best = null;
     for (let i = 0; i < sorted.length - 2; i++) {
       const stack = [sorted[i]];
       for (let j = i + 1; j < sorted.length && stack.length < 3; j++) {
@@ -154,9 +168,12 @@ const IvBars = (() => {
         const spacedOk = cand.y0 - prev.y1 > 0 && cand.y0 - prev.y1 <= maxSpacing;
         if (aligned && spacedOk) stack.push(cand);
       }
-      if (stack.length === 3) return stack;
+      if (stack.length === 3) {
+        const width3 = stack[0].x1 - stack[0].x0;
+        if (!best || width3 > best.width3) best = { stack, width3 };
+      }
     }
-    return null;
+    return best ? best.stack : null;
   }
 
   /**
