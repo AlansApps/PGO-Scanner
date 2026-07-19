@@ -13,6 +13,15 @@ Live site: https://alansapps.github.io/PGO-Scanner/ (served from `main`).
 - After a meaningful batch of changes, ASK the user whether to merge
   `dev` → `main` (that is what publishes to the live site). Never merge
   without asking.
+- GitHub Pages serves `js/*.js` and `css/style.css` with
+  `Cache-Control: max-age=600` and NO cache-busting. A phone (especially
+  the "Add to Home Screen" PWA) can keep running OLD code for 10+ minutes
+  after a deploy. index.html loads these files with a `?v=YYYYMMDDx`
+  query string for exactly this reason — **bump that version string on
+  every deploy that changes any `js/*.js` or `css/style.css` file**, or a
+  live fix may silently fail to reach the user (this caused a real
+  confusion incident on 2026-07-19: fixes verified working locally
+  appeared broken on the user's live retest minutes after deploy).
 
 ## Language & style
 - The user may write in any language (usually Spanish); ALWAYS respond in English.

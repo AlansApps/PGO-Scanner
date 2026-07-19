@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="icon" type="image/png" href="assets/icon-192.png" />
 
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=20260719d" />
 
   <!-- Tesseract.js: client-side OCR engine (pinned to v5 for API stability) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -139,12 +139,19 @@
     <p>PGO Scanner &middot; unofficial fan tool &middot; not affiliated with Niantic or The Pokémon Company</p>
   </footer>
 
-  <!-- Application modules (order matters: utilities first, app wiring last) -->
-  <script src="js/calc.js"></script>
-  <script src="js/pokedex.js"></script>
-  <script src="js/ivbars.js"></script>
-  <script src="js/scanner.js"></script>
-  <script src="js/videoscanner.js"></script>
-  <script src="js/app.js"></script>
+  <!-- Application modules (order matters: utilities first, app wiring last).
+       GitHub Pages serves these with Cache-Control: max-age=600 and no
+       cache-busting by default, so a phone (especially a Home Screen PWA)
+       can keep running OLD code for up to 10 minutes after a deploy, or
+       longer if a tab was never fully closed. The ?v=YYYYMMDDx query
+       string forces a fresh fetch on every deploy — BUMP IT (and the one
+       on css/style.css above) whenever any js/*.js or css/style.css file
+       changes, or a live fix may silently not reach the user. -->
+  <script src="js/calc.js?v=20260719d"></script>
+  <script src="js/pokedex.js?v=20260719d"></script>
+  <script src="js/ivbars.js?v=20260719d"></script>
+  <script src="js/scanner.js?v=20260719d"></script>
+  <script src="js/videoscanner.js?v=20260719d"></script>
+  <script src="js/app.js?v=20260719d"></script>
 </body>
 </html>

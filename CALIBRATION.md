@@ -1,5 +1,48 @@
 # Scanner calibration checklist
 
+## Known issues (tracked, being worked through)
+Running log of real-world scan failures reported by the user, so they can
+be revisited with more data instead of getting lost between sessions.
+Mark ✅ RESOLVED with the fix + commit once confirmed by a re-test.
+
+- **Regional-form disambiguation from video is unreliable** (e.g. Stunfisk
+  Normal vs Galarian — same base stats in our data, different types
+  Ground/Electric vs Ground/Steel). The type-row OCR that resolves this
+  from photos often can't read the tiny type label at video resolution.
+  STATUS: OPEN — user is preparing a comparison video (both Stunfisk
+  types back to back) specifically to find a fix. Do not attempt a fix
+  from guesswork; wait for that video's real pixel data.
+- **2026-07-19 (09.52.54 video, tested via the live site) — ✅ RESOLVED,
+  two causes stacked:**
+  1. Likely stale cache: GitHub Pages serves js/*.js with
+     `Cache-Control: max-age=600` and the site had no cache-busting, so
+     a phone (especially the Home Screen PWA) could keep running OLD
+     code for a while after a deploy. FIX: index.html script/style tags
+     now carry a `?v=YYYYMMDDx` query string, bumped on every deploy
+     that touches js/*.js or css/style.css (rule added to CLAUDE.md).
+  2. Real, reproducible flakiness in `decideCP` (js/videoscanner.js):
+     traced the Clauncher miss to per-frame CP reads [644, 1644, null,
+     64, null] — no value repeated, so the old "majority OR unique
+     plausible" rule bailed to null even though only 644 passed the
+     CP+shown-HP-vs-level plausibility check. Root cause of the
+     per-frame disagreement: video seeking is not perfectly
+     deterministic — a "cold" seek straight to one timestamp can
+     occasionally decode a slightly different frame than a sequential
+     seek through nearby timestamps would (confirmed: 3 repeated full
+     scans of this video gave inconsistent Clauncher results before the
+     fix, identical results after). FIX: decideCP now scores ALL
+     plausible candidates by vote count and returns the best-supported
+     one (handles a single strong plausible read the same way as a
+     clean majority) with a blank-out only on a genuine tie between two
+     different plausible values; added a third escalation tier that
+     samples densely (~6 extra points) across the whole stable window
+     when the normal 3-5 reads can't resolve it.
+  Verified: 3 repeated full scans of the video now give identical,
+  correct results for Stunfisk (CP1000), Deino (CP312) and Clauncher
+  (CP644); full photo+video regression suite still 100% green; bonus
+  recovery on an unrelated video (Tynamo CP333, previously blank).
+
+
 The scanner reads IVs from the appraisal bars by pixel analysis and reads
 name/CP by OCR. Both need calibration against REAL screenshots from the
 user's device. This file tracks which cases have been verified.

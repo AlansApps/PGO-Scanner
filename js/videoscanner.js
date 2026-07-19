@@ -112,28 +112,27 @@ const VideoScanner = (() => {
   /**
    * Decide the CP from several per-frame OCR readings.
    *
-   * Rules, in order:
-   *   1. A value read on >= 2 frames wins (moving background noise like
-   *      bubbles corrupts single frames, but rarely the same way twice) —
-   *      as long as it is plausible.
-   *   2. Otherwise, if exactly ONE distinct reading is plausible for this
-   *      species + IVs (i.e. some level produces that CP), take it. This
-   *      rescues cases like readings [1128, 128]: 1128 is impossible,
-   *      128 is the real CP.
-   *   3. Otherwise return null -> the field stays blank for manual entry.
+   * Plausibility is checked first: a CP is plausible only if some form
+   * of the species reaches it at some level, and — when the shown max
+   * HP was also read — that SAME level reproduces that HP too. This
+   * cross-check (does any level explain BOTH independently-read numbers
+   * at once?) kills the vast majority of OCR misreads outright (e.g. a
+   * CP that only fits at level 1 while the HP says level 16, or a
+   * Lucky-card glare turning CP 540 into 1540).
    *
-   * Plausibility is only a sanity FILTER on OCR candidates; it never
-   * invents or modifies a value.
+   * Among whatever remains plausible, the value read on the most frames
+   * wins (ties broken by whichever was seen first). This handles both
+   * a clean majority (e.g. 644 read 3 times) AND a single lucky read
+   * among mostly-corrupted frames (e.g. reads [644, 1644, null, 64,
+   * null] where only 644 survives the plausibility filter) with the
+   * same logic, rather than two separate all-or-nothing rules.
+   *
+   * Returns null (blank field, never a guess) when no read is plausible.
    */
   function decideCP(reads, name, ivs, hpShown = null) {
     const nonNull = reads.filter((r) => r !== null);
     if (!nonNull.length) return null;
 
-    // A CP is plausible if some form of the species reaches it at some
-    // level — and when the shown max HP was read too, THE SAME LEVEL
-    // must also reproduce that HP. This alignment across independent
-    // readings kills most OCR misreads (e.g. a CP that only fits at
-    // level 1 while the HP says the Pokémon is level 16).
     const forms = name ? Pokedex.getForms(name) : [];
     const isPlausible = (cp) =>
       !forms.length ||
@@ -144,18 +143,22 @@ const VideoScanner = (() => {
         )
       );
 
-    // Rule 1: majority
     const counts = new Map();
     for (const r of nonNull) counts.set(r, (counts.get(r) || 0) + 1);
-    let majority = null;
-    for (const [value, count] of counts) {
-      if (count >= 2 && (majority === null || count > counts.get(majority))) majority = value;
-    }
-    if (majority !== null && isPlausible(majority)) return majority;
 
-    // Rule 2: unique plausible candidate
-    const plausible = [...counts.keys()].filter(isPlausible);
-    return plausible.length === 1 ? plausible[0] : null;
+    // Among plausible candidates, the most-voted one wins; a genuine
+    // tie between two DIFFERENT plausible values is rare (the math
+    // cross-check already rejects most noise) but ambiguous when it
+    // happens — blank out rather than arbitrarily pick one.
+    let best = null;
+    let bestCount = 0;
+    let tied = false;
+    for (const [value, count] of counts) {
+      if (!isPlausible(value)) continue;
+      if (count > bestCount) { best = value; bestCount = count; tied = false; }
+      else if (count === bestCount && value !== best) { tied = true; }
+    }
+    return tied ? null : best;
   }
 
   /**
@@ -264,9 +267,16 @@ const VideoScanner = (() => {
       const times = baseTimes; // escalation passes reuse the base frames
 
       // CP: vote + plausibility (CP AND shown HP must agree on a level).
-      // When that fails, ESCALATE with a stricter binarization pass
-      // (kills the light rays behind Lucky cards that OCR as extra
-      // digits, e.g. CP 540 read as 1540).
+      // When that fails, ESCALATE in two ways:
+      //   a) a stricter binarization pass (kills the light rays behind
+      //      Lucky cards that OCR as extra digits, e.g. CP 540 -> 1540);
+      //   b) DENSER independent sampling across the whole group window.
+      //      Video seeking is not perfectly deterministic frame-to-frame
+      //      (a cold seek straight to one timestamp can occasionally
+      //      decode a slightly different frame than a sequential seek
+      //      through nearby timestamps would have) — sampling more
+      //      points inside the same "stable" window gives more chances
+      //      for a clean read to outvote a corrupted one.
       // With NO species at all the CP cannot be validated — leave it
       // blank rather than trust an unverifiable OCR number.
       let cp = null;
@@ -277,6 +287,17 @@ const VideoScanner = (() => {
             await seekTo(video, t);
             ctx.drawImage(video, 0, 0, W, H);
             cpReads.push(await Scanner.ocrCPBand(frame, 235));
+          }
+          cp = decideCP(cpReads, nameHint, ivs, hpShown);
+        }
+        if (cp === null) {
+          const span = g.tEnd - g.tStart;
+          const denseStep = Math.max(0.1, span / 6);
+          for (let t = g.tStart; t <= g.tEnd; t += denseStep) {
+            if (baseTimes.includes(t) || extraTimes.includes(t)) continue;
+            await seekTo(video, t);
+            ctx.drawImage(video, 0, 0, W, H);
+            cpReads.push(await Scanner.ocrCPBand(frame));
           }
           cp = decideCP(cpReads, nameHint, ivs, hpShown);
         }
