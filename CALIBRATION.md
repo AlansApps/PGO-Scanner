@@ -12,6 +12,53 @@ Mark ✅ RESOLVED with the fix + commit once confirmed by a re-test.
   STATUS: OPEN — user is preparing a comparison video (both Stunfisk
   types back to back) specifically to find a fix. Do not attempt a fix
   from guesswork; wait for that video's real pixel data.
+- **2026-07-19 (10.39.32 video) — user reported 6/30 needing manual CP
+  review, asked to reduce it. ✅ MOSTLY RESOLVED, one residual case
+  documented below:**
+  1. Root cause (dense diagnostic sweep across each failing group's full
+     time window, sampling every 0.1s): the coarse 0.4s-grid boundary
+     used to detect a "stable" group routinely UNDERSAMPLES how long a
+     card is actually on screen — e.g. Stufful's true stable window was
+     0.8s wide but the coarse grid only caught 0.4s of it, missing the
+     cleanest, most consistent CP frames entirely. Confirmed for
+     Stufful/Wimpod/Mimikyu/Smoliv/Wattrel/Wiglett: the correct CP was
+     reliably readable just outside the detected window.
+     FIX: `refineGroupBounds` (js/videoscanner.js) re-checks the IV bars
+     at 0.1s resolution and extends the window outward while they keep
+     matching — cheap (pixel-only, no OCR) and used ONLY for CP/HP
+     escalation reads, never for name (see finding 3).
+  2. Second root cause found on an older video (Buneary/Bronzor,
+     2026-07-18 14.46.33): for some cards the NORMAL-threshold CP read is
+     unreadable across the card's ENTIRE window while the STRICT (235)
+     threshold reads it cleanly throughout — but the strict-threshold
+     escalation tier only checked 3 narrow points, easy to miss. FIX: the
+     final "dense" escalation tier now reads BOTH thresholds at every
+     sampled point instead of just the normal one.
+  3. **BLOCKER caught during testing, fixed before shipping:** widening
+     the boundary for CP reads was initially applied to NAME reads too,
+     which is unsafe — name text can finish transitioning to the next
+     card before the IV bars do, so a widened name-read window
+     occasionally picked up an ADJACENT card's name (confirmed: a real
+     Stufful/Dewpider pair produced a "Stufful" entry carrying Dewpider's
+     IVs). FIX: name/HP/type reads stay strictly within the original,
+     un-widened coarse window; only CP reads use the refined (wider)
+     window, protected by the existing CP+HP+level plausibility check.
+  4. Residual, OPEN, lower-severity case: a card's own un-widened coarse
+     window can occasionally already straddle the swipe into the next
+     card by itself (independent of any refinement), producing a SHORT
+     group whose name reads as the wrong (adjacent) species while its
+     IVs are correct — e.g. a 2-frame blip read "Wimpod" while showing
+     the preceding Stufful's real IVs. Mitigated (not eliminated): Pass 4
+     dedup no longer requires a name match to merge a SHORT group into a
+     longer, more-trustworthy neighbor. This closes most cases but not
+     all — when the mislabeled short group has no long correctly-named
+     neighbor with matching IVs to merge into, it survives as its own
+     entry. SAFE either way: CP always stays blank for these (never a
+     guessed/wrong number), so nothing wrong ever auto-saves — worst
+     case is an extra low-confidence entry in the manual-review queue.
+  Verified: repeated runs (6+) of the reported video after all fixes
+  typically show 0-3 entries needing review (down from the reported 6),
+  sometimes 0; full 8-photo + 5-video regression suite unaffected.
 - **2026-07-19 (09.52.54 video, tested via the live site) — ✅ RESOLVED,
   two causes stacked:**
   1. Likely stale cache: GitHub Pages serves js/*.js with
