@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="icon" type="image/png" href="assets/icon-192.png" />
 
-  <link rel="stylesheet" href="css/style.css?v=20260719g" />
+  <link rel="stylesheet" href="css/style.css?v=20260722a" />
 
   <!-- Tesseract.js: client-side OCR engine (pinned to v5 for API stability) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -50,7 +50,16 @@
         -->
         <input id="file-input" type="file" accept="image/*,video/*" hidden />
       </div>
-      <p class="usage-hint">📸 Photo = one Pokémon &nbsp;&middot;&nbsp; 🎥 Video = swipe through many at once</p>
+      <!-- Compact "how to scan" hint: a real cropped example (status bar
+           removed) showing the name/CP/IVs the scanner needs visible. -->
+      <div class="howto">
+        <img class="howto-img" src="assets/example-scan.jpg"
+             alt="Example Pokémon GO card with name, CP and IV bars visible" />
+        <p class="howto-text">
+          Open a Pokémon so its <strong>name, CP and IVs</strong> are visible, like this.<br />
+          📸 Photo = one Pokémon &nbsp;&middot;&nbsp; 🎥 Video = swipe through many at once
+        </p>
+      </div>
       <p id="data-status" class="data-status" role="status"></p>
     </section>
 
@@ -148,11 +157,11 @@
        string forces a fresh fetch on every deploy — BUMP IT (and the one
        on css/style.css above) whenever any js/*.js or css/style.css file
        changes, or a live fix may silently not reach the user. -->
-  <script src="js/calc.js?v=20260719g"></script>
-  <script src="js/pokedex.js?v=20260719g"></script>
-  <script src="js/ivbars.js?v=20260719g"></script>
-  <script src="js/scanner.js?v=20260719g"></script>
-  <script src="js/videoscanner.js?v=20260719g"></script>
-  <script src="js/app.js?v=20260719g"></script>
+  <script src="js/calc.js?v=20260722a"></script>
+  <script src="js/pokedex.js?v=20260722a"></script>
+  <script src="js/ivbars.js?v=20260722a"></script>
+  <script src="js/scanner.js?v=20260722a"></script>
+  <script src="js/videoscanner.js?v=20260722a"></script>
+  <script src="js/app.js?v=20260722a"></script>
 </body>
 </html>

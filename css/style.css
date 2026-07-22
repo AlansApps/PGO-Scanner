@@ -170,12 +170,36 @@ body {
 }
 .data-status.error { color: var(--red-dark); font-weight: 600; }
 
-/* One-line usage tip under the upload button */
-.usage-hint {
-  margin-top: 10px;
+/* "How to scan" hint: a small real-example thumbnail + short caption,
+   side by side so it stays compact instead of stacking tall. */
+.howto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px;
+  background: #f7f9fd;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+}
+.howto-img {
+  flex: 0 0 72px;
+  width: 72px;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.howto-text {
   font-size: 0.78rem;
-  text-align: center;
+  line-height: 1.45;
   color: var(--navy-soft);
+}
+.howto-text strong { color: var(--navy); }
+
+@media (max-width: 480px) {
+  .howto-img { flex-basis: 58px; width: 58px; }
+  .howto-text { font-size: 0.74rem; }
 }
 
 /* ------------------------------- Buttons ------------------------------- */
