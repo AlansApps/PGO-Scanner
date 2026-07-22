@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
   <link rel="icon" type="image/png" href="assets/icon-192.png" />
 
-  <link rel="stylesheet" href="css/style.css?v=20260719e" />
+  <link rel="stylesheet" href="css/style.css?v=20260719f" />
 
   <!-- Tesseract.js: client-side OCR engine (pinned to v5 for API stability) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -50,6 +50,7 @@
         -->
         <input id="file-input" type="file" accept="image/*,video/*" hidden />
       </div>
+      <p class="usage-hint">📸 Photo = one Pokémon &nbsp;&middot;&nbsp; 🎥 Video = swipe through many at once</p>
       <p id="data-status" class="data-status" role="status"></p>
     </section>
 
@@ -129,6 +130,13 @@
     <!-- ====================== SAVED POKÉMON LIST ====================== -->
     <section id="collection-section" class="card collection-card hidden">
       <h2 class="section-title">Scanned Pokémon</h2>
+      <p class="legend-line">
+        <span class="league-chip tier-excellent">Excellent</span>
+        <span class="league-chip tier-good">Good</span>
+        <span class="league-chip tier-moderate">Moderate</span>
+        <span class="league-chip tier-bad">Bad</span>
+        <span class="legend-caption">how close to the league's CP cap</span>
+      </p>
       <ul id="collection-list" class="collection-list"></ul>
       <button id="clear-collection-btn" class="btn btn-ghost btn-sm" type="button">Clear list</button>
     </section>
@@ -147,11 +155,11 @@
        string forces a fresh fetch on every deploy — BUMP IT (and the one
        on css/style.css above) whenever any js/*.js or css/style.css file
        changes, or a live fix may silently not reach the user. -->
-  <script src="js/calc.js?v=20260719e"></script>
-  <script src="js/pokedex.js?v=20260719e"></script>
-  <script src="js/ivbars.js?v=20260719e"></script>
-  <script src="js/scanner.js?v=20260719e"></script>
-  <script src="js/videoscanner.js?v=20260719e"></script>
-  <script src="js/app.js?v=20260719e"></script>
+  <script src="js/calc.js?v=20260719f"></script>
+  <script src="js/pokedex.js?v=20260719f"></script>
+  <script src="js/ivbars.js?v=20260719f"></script>
+  <script src="js/scanner.js?v=20260719f"></script>
+  <script src="js/videoscanner.js?v=20260719f"></script>
+  <script src="js/app.js?v=20260719f"></script>
 </body>
 </html>
