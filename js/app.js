@@ -112,7 +112,9 @@
         frag.appendChild(opt);
       }
       els.nameList.appendChild(frag);
-      els.dataStatus.textContent = `Pokédex ready — ${Pokedex.names.length} species loaded`;
+      // Clear the "Loading…" line once ready — no need to keep a
+      // permanent status message when everything is working normally.
+      els.dataStatus.textContent = '';
       els.dataStatus.classList.remove('error');
       renderCollection(); // saved entries can now show their league rows
     } catch (err) {
