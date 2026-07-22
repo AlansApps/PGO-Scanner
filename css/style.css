@@ -383,20 +383,6 @@ body {
   flex-wrap: wrap;
 }
 
-/* Color-code legend: reuses the same .league-chip pill styling as the
-   rows below it, so the legend and the data it explains always match. */
-.legend-line {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-.legend-caption {
-  font-size: 0.76rem;
-  color: var(--navy-soft);
-}
-
 /* --------------------------- Collection list --------------------------- */
 .collection-list {
   list-style: none;
