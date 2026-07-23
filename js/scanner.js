@@ -49,10 +49,10 @@ const Scanner = (() => {
   // covered by the trainer avatar — truncated words are handled by
   // fuzzy type matching (Pokedex.detectTypesInText).
   const TYPE_BAND = {
-    x: 0.22, w: 0.56,
-    y: 0.596, h: 0.04,
-    scale: 4,
-    darkThreshold: 200, // label text is gray: lum < this -> black
+    x: 0.10, w: 0.75,
+    y: 0.59, h: 0.05,
+    scale: 6,
+    darkThreshold: 180, // label text is gray: lum < this -> black
   };
 
   /**

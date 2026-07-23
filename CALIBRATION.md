@@ -9,9 +9,73 @@ Mark ✅ RESOLVED with the fix + commit once confirmed by a re-test.
   Normal vs Galarian — same base stats in our data, different types
   Ground/Electric vs Ground/Steel). The type-row OCR that resolves this
   from photos often can't read the tiny type label at video resolution.
-  STATUS: OPEN — user is preparing a comparison video (both Stunfisk
-  types back to back) specifically to find a fix. Do not attempt a fix
-  from guesswork; wait for that video's real pixel data.
+  STATUS: OPEN for Stunfisk specifically (user is preparing a comparison
+  video). PARTIALLY RESOLVED for the general case — see 2026-07-22 entry
+  below: TYPE_BAND crop/threshold tuning now reads short type words at
+  video resolution (confirmed: Zorua -> Hisuian, Grimer -> Alola both
+  newly resolve). Stunfisk's case may simply need this same tuning
+  re-tested once the comparison video arrives — don't assume it's a
+  separate unsolved problem without re-checking first.
+- **2026-07-22 (18.15.14 video, 39 Pokémon) — user reported Pikachu CP
+  (x3), Grimer form, Eevee CP, Chikorita CP not detected — ✅ MOSTLY
+  RESOLVED, one root cause was "false alarm":**
+  1. Chikorita CP80 "Defense 3" — user suspected a misread. Math check
+     (CP80 + shown HP 36 + species base stats) uniquely resolves to
+     Level 4 with IVs 1/3/13 — Defense 3 is exactly, provably correct.
+     A zoomed re-look at the bar shows why it LOOKS like more than 3 to
+     the eye: it's the same visual trap as "4 vs 5" (fill reaching close
+     to a block boundary reads as fuller than it is). Lesson: when a
+     bar reading looks suspicious, verify with the CP+shown-HP+level
+     math cross-check before assuming the pixel read is wrong — it
+     usually isn't.
+  2. Grimer's Alolan form (Poison/Dark) never resolved: the type row
+     reads "POISON / D" at video resolution before the trainer avatar's
+     hair fully covers "ARK" — TYPE_BAND was too narrow/high-threshold
+     to read even the visible part cleanly. Retuned crop (x 0.10-0.85,
+     y 0.59-0.64, darkThreshold 180) reads "POISON" cleanly. Two
+     supporting fixes were required to make detecting a PARTIAL type
+     safe rather than dangerous:
+     a) `detectTypesInText` only matched prefix-truncated words
+        ("POISO"); added suffix matching for words like "OISON" (the
+        leading glyph lost first).
+     b) `pickFormByTypes` had a real latent bug: detecting a partial
+        type set that happened to equal ANOTHER form's COMPLETE type
+        set caused a confident wrong pick (detecting only "Poison" would
+        have matched Normal Grimer exactly and wrongly won over Alolan,
+        which also contains Poison but has an occluded second type).
+        Rewrote to require the detected set be a subset of EXACTLY ONE
+        candidate form's types — ambiguous subset matches (as when only
+        "Poison" is seen and both Normal and Alolan qualify) now
+        correctly stay unresolved instead of guessing. This bug was
+        latent before (unreachable since detection returned nothing),
+        made reachable (and dangerous) by fix (a) — fixed together.
+        In THIS video Grimer still resolves confidently because the
+        video's multi-frame sampling caught enough signal across
+        several frames within its group window; a video where the
+        avatar permanently blocks the second type for 100% of every
+        sampled frame would still correctly stay ambiguous.
+  3. Pikachu CP38 (paired with unusually high IVs 14/0/14): the true
+     CP was only readable at a LOWER threshold (~190-195) than either
+     existing tier (default 215, strict 235) ever tried — confirmed via
+     a full threshold sweep, and confirmed correct via the shown-HP
+     math cross-check (CP38 + HP20 -> uniquely Level 2). Added a third,
+     more lenient threshold (195) to both escalation tiers.
+  4. Performance regression caught before shipping: escalation tiers
+     originally always read every planned sample point/threshold in
+     full before checking the result even once — adding threshold 195
+     roughly doubled the OCR calls per escalating group, and this video
+     (unusually many hard cards) went from ~20s to 451s. Fixed by
+     checking decideCP after each sample point and breaking out the
+     moment it succeeds, instead of only after exhausting the tier;
+     restored to ~20s with IDENTICAL results (confirmed 3 repeated runs).
+     Lesson: any escalation-tier change must be timed on a large/messy
+     video, not just checked for correctness — a correctness fix that
+     makes the common case slow is not a net improvement.
+  Verified: this video now scores 39/39 with zero blanks across 3
+  repeated runs (previously 6 unreadable); full 8-photo + 5-video
+  regression suite stays green, with two bonus recoveries from the
+  TYPE_BAND/threshold tuning on unrelated videos (Zorua -> Hisuian,
+  Frillish second entry's previously-blank CP -> 587).
 - **2026-07-19 (10.39.32 video) — user reported 6/30 needing manual CP
   review, asked to reduce it. ✅ MOSTLY RESOLVED, one residual case
   documented below:**

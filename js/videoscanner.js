@@ -367,26 +367,44 @@ const VideoScanner = (() => {
       //      for a clean read to outvote a corrupted one.
       // With NO species at all the CP cannot be validated — leave it
       // blank rather than trust an unverifiable OCR number.
+      // Escalation thresholds beyond the default (215): 235 (stricter —
+      // kills Lucky-card light-ray glare that adds phantom digits) and
+      // 195 (more lenient — some cards' CP glyphs render with lower
+      // contrast than the default expects and are invisible at 215+;
+      // confirmed on a real video: a CP that read null at every
+      // threshold from 210 up read cleanly as "38" at 195, and matched
+      // the shown HP at no other candidate value). Neither direction
+      // universally wins, so both are tried.
+      const ESCALATION_THRESHOLDS = [235, 195];
+
+      // Every escalation tier checks decideCP after each SAMPLE POINT
+      // (not after every single read) and stops as soon as it succeeds —
+      // most cards resolve in tier 1 or early in tier 2, and only a
+      // genuinely hard card burns through the full dense sweep. Without
+      // this, every group that needs any escalation always pays for the
+      // ENTIRE sweep even after the answer is already certain, which
+      // made a hard video take minutes instead of seconds.
       let cp = null;
       if (nameHint) {
         cp = decideCP(cpReads, nameHint, ivs, hpShown);
+
         if (cp === null) {
           for (const t of cpTimes) {
             await seekTo(video, t);
             ctx.drawImage(video, 0, 0, W, H);
-            cpReads.push(await Scanner.ocrCPBand(frame, 235));
+            for (const th of ESCALATION_THRESHOLDS) cpReads.push(await Scanner.ocrCPBand(frame, th));
+            cp = decideCP(cpReads, nameHint, ivs, hpShown);
+            if (cp !== null) break;
           }
-          cp = decideCP(cpReads, nameHint, ivs, hpShown);
         }
+
         if (cp === null) {
-          // Read at BOTH thresholds: for some cards the normal threshold
-          // is unreadable across the ENTIRE window (confirmed: a card
-          // whose CP band renders in a way the normal binarization
-          // never resolves, while the strict-235 pass reads it cleanly
-          // throughout) — tier 2's strict pass only checked 3 narrow
-          // points, easy to miss the readable stretch on a card with
-          // this failure mode; casting a wide net at both thresholds
-          // here is what actually finds it.
+          // Cast a wide net across the whole refined window at every
+          // threshold: for some cards a single threshold is unreadable
+          // across the ENTIRE window while a different one reads
+          // cleanly throughout — tier 2 only checked 3 narrow points,
+          // easy to miss the readable stretch on a card with this
+          // failure mode.
           const span = refined.tEnd - refined.tStart;
           const denseStep = Math.max(0.1, span / 6);
           for (let t = refined.tStart; t <= refined.tEnd; t += denseStep) {
@@ -394,9 +412,10 @@ const VideoScanner = (() => {
             await seekTo(video, t);
             ctx.drawImage(video, 0, 0, W, H);
             cpReads.push(await Scanner.ocrCPBand(frame));
-            cpReads.push(await Scanner.ocrCPBand(frame, 235));
+            for (const th of ESCALATION_THRESHOLDS) cpReads.push(await Scanner.ocrCPBand(frame, th));
+            cp = decideCP(cpReads, nameHint, ivs, hpShown);
+            if (cp !== null) break;
           }
-          cp = decideCP(cpReads, nameHint, ivs, hpShown);
         }
       }
 

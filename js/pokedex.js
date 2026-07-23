@@ -255,23 +255,25 @@ const Pokedex = (() => {
     if (forms.length === 1) return forms[0];
     if (!detectedTypes.length) return null;
 
-    const detected = detectedTypes.map((t) => t.toLowerCase()).sort();
-    const scored = forms.map((f) => {
-      const own = f.types.map((t) => t.toLowerCase());
-      const overlap = detected.filter((t) => own.includes(t)).length;
-      const exact = own.length === detected.length && overlap === own.length;
-      return { form: f, overlap, exact };
+    // A form is a candidate iff EVERY detected type appears in its type
+    // list — i.e. nothing we saw contradicts it. This is deliberately
+    // NOT "detected types == form's types exactly": on screen, a second
+    // type is very often hidden behind the trainer avatar (confirmed:
+    // Alolan Grimer's card only ever shows "POISON / D" before the
+    // avatar's hair covers "ARK"), so detecting a single type must not
+    // be read as "and nothing else" — that would wrongly favor whichever
+    // form happens to have EXACTLY that one type over a form that also
+    // has it plus an occluded second type. Only commit when exactly one
+    // form is consistent with everything detected; two or more
+    // candidates (or zero, e.g. OCR noise matching no real combination)
+    // stay unresolved and go to manual review rather than guess.
+    const detected = new Set(detectedTypes.map((t) => t.toLowerCase()));
+    const candidates = forms.filter((f) => {
+      const own = new Set(f.types.map((t) => t.toLowerCase()));
+      for (const t of detected) if (!own.has(t)) return false;
+      return true;
     });
-
-    // Prefer an exact type-set match; fall back to highest overlap if unique.
-    const exactMatches = scored.filter((s) => s.exact);
-    if (exactMatches.length === 1) return exactMatches[0].form;
-
-    scored.sort((a, b) => b.overlap - a.overlap);
-    if (scored[0].overlap > 0 && (scored.length === 1 || scored[0].overlap > scored[1].overlap)) {
-      return scored[0].form;
-    }
-    return null; // ambiguous — let the user choose
+    return candidates.length === 1 ? candidates[0] : null;
   }
 
   /**
@@ -383,8 +385,10 @@ const Pokedex = (() => {
       const w = word.toLowerCase();
       for (const type of ALL_TYPES) {
         const t = type.toLowerCase();
-        // Accept a truncated prefix (>=4 chars) or a 1-edit misread.
-        if (t.startsWith(w) || levenshtein(w, t) <= 1) { found.add(type); break; }
+        // Accept a truncated prefix OR suffix (>=4 chars) or a 1-edit
+        // misread. Suffix truncation happens too — e.g. a low-res video
+        // frame losing the leading glyph turned "POISON" into "OISON".
+        if (t.startsWith(w) || t.endsWith(w) || levenshtein(w, t) <= 1) { found.add(type); break; }
       }
     }
     return [...found];
