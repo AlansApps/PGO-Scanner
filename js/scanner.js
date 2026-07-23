@@ -199,9 +199,11 @@ const Scanner = (() => {
 
   /**
    * Read the type word(s) from the type row ("POISON / FLYING") and
-   * return the recognized type names. Used to disambiguate regional
-   * forms in video scans (photos use the full-image pass instead).
-   * @returns {Promise<Array<string>>} e.g. ["Poison"] — [] when unreadable
+   * return the recognized type names plus whether a "/" separator was
+   * seen (proof of two types, even when the second word is illegible —
+   * used to disambiguate regional forms in video scans; photos use the
+   * full-image pass instead).
+   * @returns {Promise<{types: Array<string>, twoTypes: boolean}>}
    */
   async function ocrTypeBand(source) {
     const canvas = cropBand(source, TYPE_BAND, 0);
@@ -223,7 +225,133 @@ const Scanner = (() => {
       tessedit_pageseg_mode: '7', // single text line
     });
     const { data } = await worker.recognize(canvas);
-    return Pokedex.detectTypesInText(data.text || '');
+    const text = data.text || '';
+    return { types: Pokedex.detectTypesInText(text), twoTypes: Pokedex.detectTypeSeparator(text) };
+  }
+
+  // Icon row: the colored circle(s) shown just above the type WORD(S) —
+  // same row the trainer avatar usually clips, but the icon itself often
+  // survives when the word doesn't. Last-resort fallback for when text
+  // OCR of the type band found NOTHING at all.
+  const ICON_BAND = {
+    x: 0.10, w: 0.75,
+    y: 0.555, h: 0.045,
+    scale: 1, // no OCR here, just color sampling — no need to upscale
+  };
+
+  // Approximate hue (0-360) of each type's badge icon. Only Grass (~90)
+  // and Water have been directly measured from real screenshots so far
+  // (see CALIBRATION.md "Known issues" — icon color is a first pass,
+  // background blending was found to shift hue noticeably, e.g. a real
+  // Water icon measured ~159 instead of a "pure" blue ~205-210). Normal,
+  // Dark and Steel are deliberately excluded: their icons render close to
+  // gray on screen, so hue alone can't tell them apart from background —
+  // safer to never guess those than to risk a confident wrong pick.
+  const TYPE_HUE = {
+    Fire: 20, Electric: 48, Grass: 90, Water: 205, Ice: 190,
+    Fighting: 8, Poison: 300, Ground: 32, Flying: 235, Psychic: 322,
+    Bug: 75, Rock: 42, Ghost: 272, Dragon: 185, Fairy: 335,
+  };
+
+  /** Shortest distance between two hues on the 360-degree color wheel. */
+  function hueDistance(a, b) {
+    const diff = Math.abs(a - b) % 360;
+    return diff > 180 ? 360 - diff : diff;
+  }
+
+  /** RGB (0-255 each) -> hue in degrees. Caller must already know sat > 0. */
+  function rgbToHue(r, g, b, max, min, sat) {
+    let h;
+    if (max === r) h = 60 * (((g - b) / sat) % 6);
+    else if (max === g) h = 60 * (((b - r) / sat) + 2);
+    else h = 60 * (((r - g) / sat) + 4);
+    return h < 0 ? h + 360 : h;
+  }
+
+  /**
+   * Find the dominant saturated hue within a pixel region, ignoring
+   * near-neutral background/gradient pixels. Returns null if too few
+   * saturated pixels are found (no confident color blob present) —
+   * a conservative gate so a plain gradient never gets misread as a type.
+   */
+  function dominantHue(d, w, h, x0, x1) {
+    const MIN_SAT = 40; // below this, treat as background, not an icon
+    const buckets = new Map();
+    for (let y = 0; y < h; y++) {
+      for (let x = x0; x < x1; x++) {
+        const i = (y * w + x) * 4;
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        const sat = max - min;
+        if (sat < MIN_SAT) continue;
+        const hue = rgbToHue(r, g, b, max, min, sat);
+        const bucket = Math.round(hue / 15) * 15;
+        const entry = buckets.get(bucket) || { count: 0, sumHue: 0 };
+        entry.count++;
+        entry.sumHue += hue;
+        buckets.set(bucket, entry);
+      }
+    }
+    let best = null;
+    for (const entry of buckets.values()) {
+      if (!best || entry.count > best.count) best = entry;
+    }
+    if (!best || best.count < 10) return null; // no confident color blob
+    return best.sumHue / best.count;
+  }
+
+  /**
+   * Match a measured hue against a SPECIFIC species' candidate types only
+   * (never the full 18-type table) — e.g. for Grimer, only {Poison, Dark}
+   * are ever considered, so an unreliable global classifier isn't needed:
+   * we only need to be closer to one candidate than the others. Types with
+   * no reliable hue (Normal/Dark/Steel, see TYPE_HUE) never match.
+   * Requires a clear margin (>=30°) over the next-best candidate, else
+   * returns null rather than guessing between two close candidates.
+   */
+  function matchHueAmongCandidates(hue, candidateTypeNames) {
+    const scored = candidateTypeNames
+      .filter((t) => TYPE_HUE[t] != null)
+      .map((t) => ({ type: t, dist: hueDistance(hue, TYPE_HUE[t]) }))
+      .sort((a, b) => a.dist - b.dist);
+    if (!scored.length || scored[0].dist > 40) return null;
+    const runnerUpDist = scored[1] ? scored[1].dist : Infinity;
+    if (runnerUpDist - scored[0].dist < 30) return null;
+    return scored[0].type;
+  }
+
+  /**
+   * Last-resort type fallback: read the icon CIRCLE color(s) instead of
+   * the text label, for use only when text OCR of the type band found
+   * NOTHING (see ocrTypeBand). Splits the icon row in half (a dual-typed
+   * card shows two icons side by side); two halves with clearly distinct
+   * hues prove two types even when neither hue can be confidently named
+   * (e.g. one of them is Dark/Steel/Normal, whose icons are near-gray).
+   * @param {HTMLCanvasElement|HTMLVideoElement|HTMLImageElement} source
+   * @param {Array<string>} candidateTypeNames - union of types across the
+   *        species' candidate forms; narrows matching to just these.
+   * @returns {{types: Array<string>, twoTypes: boolean}}
+   */
+  function ocrTypeIcons(source, candidateTypeNames) {
+    const canvas = cropBand(source, ICON_BAND, 0);
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const d = imageData.data;
+    const midX = Math.floor(w / 2);
+
+    const leftHue = dominantHue(d, w, h, 0, midX);
+    const rightHue = dominantHue(d, w, h, midX, w);
+
+    const types = [];
+    const leftType = leftHue != null ? matchHueAmongCandidates(leftHue, candidateTypeNames) : null;
+    const rightType = rightHue != null ? matchHueAmongCandidates(rightHue, candidateTypeNames) : null;
+    if (leftType) types.push(leftType);
+    if (rightType && rightType !== leftType) types.push(rightType);
+
+    const twoTypes = leftHue != null && rightHue != null && hueDistance(leftHue, rightHue) > 40;
+
+    return { types, twoTypes };
   }
 
   /**
@@ -339,7 +467,12 @@ const Scanner = (() => {
     // --- Interpret OCR output ---
     if (cp === null) cp = parseCPFromText(text); // fallback
     const name = parseName(text);
-    const detectedTypes = Pokedex.detectTypesInText(text);
+    // Full-page text is noisy (HP fraction, catch-location caption), so
+    // only trust EXACT type-word matches from it — fuzzy/truncated
+    // matching and "/" separator detection are only safe against the
+    // narrow, position-anchored type-row crop (see ocrTypeBand/
+    // detectTypeSeparator warnings), fetched below when needed.
+    let detectedTypes = Pokedex.detectTypesInText(text, false);
 
     // Resolve the form (Normal / Alolan / Galarian / Hisuian / ...).
     // Only FUNCTIONALLY distinct forms are considered — cosmetic-only
@@ -347,7 +480,24 @@ const Scanner = (() => {
     let form = null;
     if (name) {
       const forms = Pokedex.getDistinctForms(name);
-      form = Pokedex.pickFormByTypes(forms, detectedTypes);
+      let types = detectedTypes, twoTypesFinal = false;
+      if (forms.length > 1) {
+        // Multiple real forms: re-read the type row with the dedicated
+        // narrow crop, which tolerates truncated/misread words and "/"
+        // detection safely (unlike the full page).
+        const band = await ocrTypeBand(img);
+        types = [...new Set([...types, ...band.types])];
+        twoTypesFinal = band.twoTypes;
+        if (!types.length && !twoTypesFinal) {
+          // Text OCR found nothing at all — last resort: the icon color(s).
+          const candidateTypes = [...new Set(forms.flatMap((f) => f.types))];
+          const icons = ocrTypeIcons(img, candidateTypes);
+          types = icons.types;
+          twoTypesFinal = icons.twoTypes;
+        }
+      }
+      form = Pokedex.pickFormByTypes(forms, types, twoTypesFinal ? 2 : null);
+      detectedTypes = types;
     }
 
     onProgress(100, 'Done');
@@ -381,9 +531,17 @@ const Scanner = (() => {
         form = forms[0];
       } else if (forms.length > 1) {
         // Multiple real forms: read the type row to pick (e.g. Grimer
-        // "POISON" = Normal vs Alolan "POISON / DARK").
-        const types = await ocrTypeBand(source);
-        form = Pokedex.pickFormByTypes(forms, types);
+        // "POISON" = Normal vs Alolan "POISON / DARK"). A "/" alone proves
+        // two types even when the second word is illegible.
+        let { types, twoTypes } = await ocrTypeBand(source);
+        if (!types.length && !twoTypes) {
+          // Text OCR found nothing at all — last resort: the icon color(s).
+          const candidateTypes = [...new Set(forms.flatMap((f) => f.types))];
+          const icons = ocrTypeIcons(source, candidateTypes);
+          types = icons.types;
+          twoTypes = icons.twoTypes;
+        }
+        form = Pokedex.pickFormByTypes(forms, types, twoTypes ? 2 : null);
       }
     }
 
@@ -400,6 +558,6 @@ const Scanner = (() => {
   function setOcrSetupHook(fn) { ocrSetupHook = fn; }
 
   // Public API (band OCR helpers are reused by the video scanner)
-  return { scanImage, scanFrame, ocrCPBand, ocrNameBand, ocrHpBand, ocrTypeBand, setOcrSetupHook };
+  return { scanImage, scanFrame, ocrCPBand, ocrNameBand, ocrHpBand, ocrTypeBand, ocrTypeIcons, setOcrSetupHook };
 
 })();

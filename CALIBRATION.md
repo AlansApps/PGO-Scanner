@@ -5,6 +5,76 @@ Running log of real-world scan failures reported by the user, so they can
 be revisited with more data instead of getting lost between sessions.
 Mark ✅ RESOLVED with the fix + commit once confirmed by a re-test.
 
+- **2026-07-23 — user requested two more "creative scraping" fallbacks for
+  regional-form disambiguation, following up on the Grimer fix above. Both
+  implemented and verified; two NEW bugs were introduced and caught+fixed
+  by my own regression testing before shipping:**
+  1. "/" separator SHORTCUT (user's insight): Normal Grimer has only ONE
+     type, so seeing a literal "/" in the type row — even with the second
+     type word fully illegible — is proof by itself that the OTHER
+     (dual-typed) form is on screen. Added `Pokedex.pickFormByTypes`'s
+     `typeCount` param (only ever passed as `2`, never `1` — absence of
+     "/" is NOT proof of one type, since the crop could have simply missed
+     it) and wired `detectTypeSeparator`'s result through both the photo
+     path (js/scanner.js scanImage) and video path (js/videoscanner.js).
+     Verified end-to-end on the real 18.15.14 video: Grimer now resolves
+     to Alola/CP796 consistently across 3 repeated runs.
+  2. Icon-COLOR fallback (user's idea): when type-row TEXT OCR finds
+     nothing at all, read the color of the small type-icon circle(s)
+     shown just above the word row instead. Real screenshots calibrated:
+     Grass measured ~90° hue at high saturation (confirmed reliable);
+     Water measured only ~159° at LOW saturation (background alpha-blend
+     shifts hue/saturation noticeably — calibration is first-pass only,
+     see js/scanner.js TYPE_HUE table comment). Deliberately excludes
+     Normal/Dark/Steel from hue matching (their icons render near-gray,
+     no reliable hue signal) and only matches within a species' ACTUAL
+     candidate types (e.g. only {Poison, Dark} for Grimer, never the
+     full 18-type table), requiring a 30°+ margin over the runner-up
+     candidate — untestable/ambiguous cases correctly return null rather
+     than guess. For Grimer specifically this fallback rarely helps in
+     practice (Dark's icon has ~0 saturation, fails the color gate) — the
+     "/" shortcut above remains the primary fix for that species; this
+     fallback is aimed at OTHER regional-form pairs with two visually
+     distinct hues.
+  3. **Two bugs caught during my own regression testing (not
+     user-reported), both from applying text heuristics designed for a
+     NARROW, position-anchored crop to the FULL-PAGE OCR pass instead:**
+     a) `detectTypeSeparator` against full-page text is unsafe: the HP
+        line ("46/46 HP") and the catch-date caption ("5/13/2026") both
+        contain "/", so it returned true on almost EVERY screenshot,
+        wrongly forcing `typeCount=2` for any multi-form species scanned
+        by PHOTO. b) `detectTypesInText`'s fuzzy/1-edit tier against
+        full-page text is unsafe too: the catch caption's word "around"
+        is a 1-edit misread of "Ground", so every photo tested detected
+        a phantom "Ground" type. FIX: `detectTypesInText` gained a
+        `fuzzy` flag (default true, but false for full-page callers —
+        exact word-boundary match only there); `scanImage` no longer
+        derives `twoTypes` from full-page text at all, instead re-reading
+        the dedicated TYPE_BAND crop (same as video) whenever a species
+        has multiple candidate forms — narrow crops don't contain the HP
+        line or catch caption, so both false-positive sources disappear.
+     Verified: full 8-photo regression re-run after the fix shows zero
+     phantom types (previously ALL 8 single-form photos showed a false
+     "Ground" type, though it happened to not corrupt any FORM pick since
+     none of those 8 species have multiple forms).
+  4. **Open, well-diagnosed (not fixed) — Eevee CP still blank on the
+     18.15.14 video, reproducible across every repeated run (NOT random
+     video-seek noise like the other blanks in this video):** OCR read
+     "306" and "74/74 HP" consistently and correctly (confirmed via raw
+     OCR text dump) — the blank isn't an OCR problem. The IV bars,
+     however, produced TWO DIFFERENT stable groups for what is very
+     likely the SAME physical Eevee: one read as IVs (9,9,14) — which is
+     mathematically IMPOSSIBLE for CP306+HP74 at any level, so correctly
+     rejected — and one read as IVs (1,2,14), which is an EXACT match
+     (Level 12, confirmed by brute-force search over all IV/level combos).
+     The correct (1,2,14)/CP306 group never appears in the final entries
+     list at all — it's being dropped or merged away somewhere between
+     Pass 1 grouping and the final entries push, while the wrong
+     (9,9,14) group survives as the blank entry. This points at an
+     IV-bar-reading/grouping reliability issue (js/ivbars.js and/or the
+     Pass 1 stable-group detection in js/videoscanner.js), a different
+     subsystem than this session's type-detection work — needs a
+     dedicated investigation, not a quick fix.
 - **Regional-form disambiguation from video is unreliable** (e.g. Stunfisk
   Normal vs Galarian — same base stats in our data, different types
   Ground/Electric vs Ground/Steel). The type-row OCR that resolves this

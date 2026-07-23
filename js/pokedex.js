@@ -249,9 +249,20 @@ const Pokedex = (() => {
    * Pick the form whose types best match a set of OCR-detected type words.
    * @param {Array<object>} forms - entries from getForms()
    * @param {Array<string>} detectedTypes - e.g. ["Normal"]
+   * @param {number|null} [typeCount] - how many types are confidently
+   *        known to be SHOWN on screen (see detectTypeCount). Only ever
+   *        passed as 2 in practice (a "/" is unambiguous proof of two
+   *        types); never passed as 1, since the absence of "/" could
+   *        just mean the crop/OCR missed it, not that there's truly
+   *        only one type — that would be an unsafe inference the wrong
+   *        direction. Narrows the candidate set for free: a species
+   *        whose second type is fully occluded still gets resolved as
+   *        long as ONE type word is legible and only one candidate form
+   *        actually has two types (e.g. Grimer: seeing just "Poison"
+   *        plus proof of a second type rules out mono-typed Normal).
    * @returns {object|null} the single best-matching form, or null if ambiguous
    */
-  function pickFormByTypes(forms, detectedTypes) {
+  function pickFormByTypes(forms, detectedTypes, typeCount = null) {
     if (forms.length === 1) return forms[0];
     if (!detectedTypes.length) return null;
 
@@ -268,12 +279,34 @@ const Pokedex = (() => {
     // candidates (or zero, e.g. OCR noise matching no real combination)
     // stay unresolved and go to manual review rather than guess.
     const detected = new Set(detectedTypes.map((t) => t.toLowerCase()));
-    const candidates = forms.filter((f) => {
+    let candidates = forms.filter((f) => {
       const own = new Set(f.types.map((t) => t.toLowerCase()));
       for (const t of detected) if (!own.has(t)) return false;
       return true;
     });
+    if (typeCount != null) {
+      candidates = candidates.filter((f) => f.types.length === typeCount);
+    }
     return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  /**
+   * Does the raw OCR text prove TWO types are shown? Pokémon GO always
+   * renders a dual-typed card as "TYPE1 / TYPE2" — the "/" separator is
+   * present even when the second type WORD is fully illegible (occluded
+   * by the trainer avatar, low-res video, etc.), so its presence alone
+   * is a safe, confident signal that this form has exactly two types —
+   * usable even when only one type word could be read.
+   * WARNING: only safe against text already localized to the type row
+   * (e.g. the narrow TYPE_BAND crop). A full-page OCR pass will contain
+   * unrelated slashes (the "46/46 HP" fraction, the catch-date caption
+   * "5/13/2026") that make this return true on almost every screenshot —
+   * never call this against full-page text.
+   * @param {string} text - raw OCR text of the type row
+   * @returns {boolean}
+   */
+  function detectTypeSeparator(text) {
+    return /\//.test(String(text));
   }
 
   /**
@@ -373,22 +406,35 @@ const Pokedex = (() => {
    * type name with one edit — the trainer avatar often covers the tail
    * of the word on screen ("POISO", "FLYIN").
    */
-  function detectTypesInText(text) {
+  /**
+   * @param {string} text - OCR'd text to scan for type words
+   * @param {boolean} [fuzzy] - also accept truncated/1-edit-misread type
+   *        words, not just exact matches. SAFE only against text already
+   *        localized to the type row (e.g. the narrow TYPE_BAND crop) —
+   *        UNSAFE against a full-page OCR pass, whose incidental text
+   *        (HP fraction, catch-location caption, etc.) contains ordinary
+   *        English words that coincidentally sit 1 edit from a type name
+   *        (found in production: the catch caption's "around" 1-edit-
+   *        matches "Ground"). Full-page callers must pass false.
+   */
+  function detectTypesInText(text, fuzzy = true) {
     const found = new Set();
     for (const type of ALL_TYPES) {
       // Word-boundary match, case-insensitive.
       const re = new RegExp(`\\b${type}\\b`, 'i');
       if (re.test(text)) found.add(type);
     }
-    for (const word of String(text).split(/[^A-Za-z]+/)) {
-      if (word.length < 4) continue;
-      const w = word.toLowerCase();
-      for (const type of ALL_TYPES) {
-        const t = type.toLowerCase();
-        // Accept a truncated prefix OR suffix (>=4 chars) or a 1-edit
-        // misread. Suffix truncation happens too — e.g. a low-res video
-        // frame losing the leading glyph turned "POISON" into "OISON".
-        if (t.startsWith(w) || t.endsWith(w) || levenshtein(w, t) <= 1) { found.add(type); break; }
+    if (fuzzy) {
+      for (const word of String(text).split(/[^A-Za-z]+/)) {
+        if (word.length < 4) continue;
+        const w = word.toLowerCase();
+        for (const type of ALL_TYPES) {
+          const t = type.toLowerCase();
+          // Accept a truncated prefix OR suffix (>=4 chars) or a 1-edit
+          // misread. Suffix truncation happens too — e.g. a low-res video
+          // frame losing the leading glyph turned "POISON" into "OISON".
+          if (t.startsWith(w) || t.endsWith(w) || levenshtein(w, t) <= 1) { found.add(type); break; }
+        }
       }
     }
     return [...found];
@@ -408,6 +454,7 @@ const Pokedex = (() => {
     getEvolutionChain,
     pickFormByTypes,
     detectTypesInText,
+    detectTypeSeparator,
     ALL_TYPES,
   };
 

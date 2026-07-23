@@ -433,12 +433,30 @@ const VideoScanner = (() => {
           // the same reason as name: no strong cross-check exists for
           // it, so it must not risk picking up an adjacent card's type.
           const types = new Set();
+          let twoTypesSeen = false;
           for (const t of baseTimes) {
             await seekTo(video, t);
             ctx.drawImage(video, 0, 0, W, H);
-            for (const ty of await Scanner.ocrTypeBand(frame)) types.add(ty);
+            const r = await Scanner.ocrTypeBand(frame);
+            for (const ty of r.types) types.add(ty);
+            if (r.twoTypes) twoTypesSeen = true;
           }
-          form = Pokedex.pickFormByTypes(forms, [...types]);
+          if (!types.size && !twoTypesSeen) {
+            // Text OCR found nothing on ANY sampled frame — last resort:
+            // the icon color(s), tried on the same safe frames.
+            const candidateTypes = [...new Set(forms.flatMap((f) => f.types))];
+            for (const t of baseTimes) {
+              await seekTo(video, t);
+              ctx.drawImage(video, 0, 0, W, H);
+              const r = Scanner.ocrTypeIcons(frame, candidateTypes);
+              for (const ty of r.types) types.add(ty);
+              if (r.twoTypes) twoTypesSeen = true;
+            }
+          }
+          // A "/" seen on ANY sampled frame is proof of two types, even if
+          // only one type WORD was ever legible (e.g. Grimer's "Dark" stays
+          // hidden behind the trainer avatar the whole time).
+          form = Pokedex.pickFormByTypes(forms, [...types], twoTypesSeen ? 2 : null);
         }
       }
 
