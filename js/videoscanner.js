@@ -503,6 +503,26 @@ const VideoScanner = (() => {
     };
     const SHORT = 2; // groups this short are animation-artifact suspects
 
+    // A THIRD artifact signature, distinct from ivsClose above: the bar
+    // ANIMATION itself (opening overshoot, or the previous card's bars
+    // still sliding toward this one's) can land on an intermediate value
+    // that is NOT close to the settled IVs at all — confirmed on a real
+    // video (18.15.14): an Eevee's bars briefly read (9,9,14) for two
+    // consecutive coarse samples (its own "stable" group, count 2)
+    // immediately before settling on the true (1,2,14) for the next two
+    // samples (also count 2) — both groups equally SHORT, and the IV gap
+    // (8, 7) far exceeds ivsClose's tolerance, so neither existing rule
+    // catches it. The decisive signal here isn't IV distance at all: the
+    // WRONG group's CP could never resolve (no level reproduces CP+shown
+    // HP with those IVs — this is exactly what decideCP's plausibility
+    // check already rejected), while the RIGHT group's CP resolved
+    // cleanly. When two same-named, time-adjacent groups split exactly
+    // this way — one with a validated CP, the other CP-blank — the
+    // blank one is almost certainly the same physical card caught
+    // mid-transition, so it's dropped in favor of the validated one
+    // rather than kept as a separate, confusing blank entry.
+    const oneCpResolvedOtherDidnt = (a, b) => (a.cp === null) !== (b.cp === null);
+
     const deduped = [];
     for (const e of entries) {
       const prev = deduped[deduped.length - 1];
@@ -514,6 +534,12 @@ const VideoScanner = (() => {
             (prev.frames <= SHORT) !== (e.frames <= SHORT)) {
           // Keep the settled (longer) group, drop the artifact.
           if (prev.frames <= SHORT) deduped[deduped.length - 1] = e;
+          continue;
+        }
+        if (compatible(prev, e) && oneCpResolvedOtherDidnt(prev, e)) {
+          // Keep whichever side has the math-validated CP, drop the
+          // CP-blank one — see comment above.
+          if (prev.cp === null) deduped[deduped.length - 1] = e;
           continue;
         }
       }

@@ -57,24 +57,50 @@ Mark ✅ RESOLVED with the fix + commit once confirmed by a re-test.
      phantom types (previously ALL 8 single-form photos showed a false
      "Ground" type, though it happened to not corrupt any FORM pick since
      none of those 8 species have multiple forms).
-  4. **Open, well-diagnosed (not fixed) — Eevee CP still blank on the
-     18.15.14 video, reproducible across every repeated run (NOT random
-     video-seek noise like the other blanks in this video):** OCR read
-     "306" and "74/74 HP" consistently and correctly (confirmed via raw
-     OCR text dump) — the blank isn't an OCR problem. The IV bars,
-     however, produced TWO DIFFERENT stable groups for what is very
-     likely the SAME physical Eevee: one read as IVs (9,9,14) — which is
-     mathematically IMPOSSIBLE for CP306+HP74 at any level, so correctly
-     rejected — and one read as IVs (1,2,14), which is an EXACT match
-     (Level 12, confirmed by brute-force search over all IV/level combos).
-     The correct (1,2,14)/CP306 group never appears in the final entries
-     list at all — it's being dropped or merged away somewhere between
-     Pass 1 grouping and the final entries push, while the wrong
-     (9,9,14) group survives as the blank entry. This points at an
-     IV-bar-reading/grouping reliability issue (js/ivbars.js and/or the
-     Pass 1 stable-group detection in js/videoscanner.js), a different
-     subsystem than this session's type-detection work — needs a
-     dedicated investigation, not a quick fix.
+  4. **✅ RESOLVED — Eevee CP blank on the 18.15.14 video, root-caused and
+     fixed same session:** OCR read "306" and "74/74 HP" consistently and
+     correctly (confirmed via raw OCR text dump) — never an OCR problem.
+     Pulled the ACTUAL video frames at the two conflicting sample points
+     and looked at them directly: the Attack/Defense bars are genuinely
+     NOT static there — this Eevee's bars are still animating (an
+     overshoot/leftover-from-previous-card transition) for about 0.4-0.8s
+     after the card first appears, so a coarse-grid sample landing in
+     that window reads a real, but transitional, mid-animation fill value
+     (9,9,14) instead of the settled (1,2,14). This isn't a pixel-
+     classifier bug — `IvBars.analyze` correctly reads whatever is
+     actually on screen at each exact instant; verified by reproducing
+     both readings via direct frame-accurate seeks and dumping the raw
+     fill/empty pixel counts for each bar. Since the transitional reading
+     forms its OWN "stable" 2-frame group (same as the settled one), Pass
+     1 emits TWO groups for one physical card; the transitional one's CP
+     never resolves (no level reproduces CP306+HP74 with ivs 9,9 — the
+     existing plausibility check correctly rejects it), while the
+     settled group resolves cleanly to CP306. Pass 4's existing
+     merge-adjacent-artifacts logic didn't catch this pair because its
+     `ivsClose` check (max delta <=3) doesn't cover a jump this large
+     (8, 7), and both groups were equally SHORT (count 2), so the
+     existing short-vs-long asymmetry rule didn't apply either.
+     FIX (js/videoscanner.js Pass 4): added a THIRD merge signal —
+     same name, close in time, and EXACTLY ONE side has a math-validated
+     (non-null) CP while the other is CP-blank — prefer/keep the
+     validated side regardless of IV distance or frame count. A
+     CP-blank group carries no information a user could use anyway, so
+     dropping it in favor of a fully-validated same-named neighbor is
+     pure improvement, not a data-loss risk; two genuinely different
+     back-to-back real catches of the same species either differ in CP
+     (both non-null, no merge — `compatible()`'s existing CP-match
+     requirement still blocks it) or are the rare true coincidence this
+     trades away for fewer confusing blank duplicates.
+     Verified: 3 repeated runs of the 18.15.14 video now show 39/39 zero
+     blanks (previously the Eevee entry was blank every run); Eevee
+     resolves to CP306/IVs(1,2,14) consistently. Bonus: the SAME fix
+     also cleaned up two pre-existing blank duplicates on the unrelated
+     10.39.32 video (Mimikyu and Wiglett each used to show a spurious
+     blank entry alongside their correct one — now just one entry each),
+     with no regressions on genuinely-distinct repeat catches (Rookidee,
+     Applin, Lechonk, Wattrel on that same video all still correctly show
+     multiple separate entries, since their CPs differ). Full 8-photo +
+     video regression suite re-verified green after the fix.
 - **Regional-form disambiguation from video is unreliable** (e.g. Stunfisk
   Normal vs Galarian — same base stats in our data, different types
   Ground/Electric vs Ground/Steel). The type-row OCR that resolves this
