@@ -379,6 +379,12 @@ body {
 }
 .evo-name { font-weight: 400; overflow-wrap: anywhere; }
 
+/* Mega Evolution rows sit under their base stage: slightly indented and
+   bold-named so they read as "the Mega version of the row above". */
+.evo-row.mega-row { margin-left: 14px; }
+.evo-row.mega-row .evo-name { font-weight: 700; }
+.mega-note { margin: 8px 0 0; font-size: 0.72rem; color: var(--navy-soft, #5a6478); }
+
 .league-chip {
   font-size: 0.78rem;
   border-radius: 999px;

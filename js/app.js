@@ -346,6 +346,38 @@
     return valid ? { name, form, cp, ivs } : null;
   }
 
+  /**
+   * Mega Evolution rows for one evolution stage (empty string if the
+   * stage has no Mega). A Mega keeps the Pokémon's IVs but has its own
+   * base stats, so its CP differs. Unlike a normal power-up target, the
+   * game auto-ADJUSTS a Mega's level to fit the league cap — so the best
+   * level is searched over the whole 1..50 range with NO "can't power
+   * down below the current level" constraint (currentLevel = null).
+   * @param {object} stage - stats entry of the stage that can Mega
+   * @param {{atk:number, def:number, hp:number}} ivs
+   * @param {boolean} small - compact style (saved-collection list)
+   */
+  function megaRowsHtml(stage, ivs, small) {
+    const cpmMax50 = Pokedex.cpmTable.filter((r) => r.level <= 50);
+    return Pokedex.getMegas(stage).map((mega) => {
+      const perLeague = [
+        { name: 'Great', cap: 1500 },
+        { name: 'Ultra', cap: 2500 },
+      ].map(({ name, cap }) => {
+        const best = PgoCalc.bestLevelForCap(mega.base, ivs, cap, cpmMax50);
+        const tier = PgoCalc.rateLeague(best, cap, ivs, null);
+        return { name, best, tier };
+      });
+      const rowTier = perLeague.reduce((a, b) => (a.tier.rank >= b.tier.rank ? a : b)).tier;
+      const chips = perLeague.map(({ name, best, tier }) => {
+        const detail = best ? ` | ${best.cp} (${best.level})` : '';
+        return `<span class="league-chip tier-${tier.key}">${name}: <strong>${tier.label}</strong>${detail}</span>`;
+      }).join('');
+      return `<div class="evo-row mega-row${small ? ' evo-row-sm' : ''} tier-${rowTier.key}">` +
+        `<span class="evo-name">${mega.name}</span>${chips}</div>`;
+    }).join('');
+  }
+
   /** Recompute the "Calculated" panel (level + league ratings) from the form. */
   function refreshDerived() {
     const entry = readForm();
@@ -398,6 +430,13 @@
       }).join('');
 
       html += `<div class="evo-row tier-${rowTier.key}"><span class="evo-name">${title}</span>${chips}</div>`;
+      html += megaRowsHtml(stage, entry.ivs, false); // Mega version(s) of this stage
+    }
+
+    if (html.includes('mega-row')) {
+      html += '<p class="mega-note">Mega rows: estimated CP/level in the Mega Edition leagues, ' +
+        'where the game lowers a Mega\'s level to fit the cap. The Pokémon must be at least ' +
+        'the shown level.</p>';
     }
 
     els.derivedContent.innerHTML = html;
@@ -539,6 +578,7 @@
         })
         .join('');
       html += `<div class="evo-row evo-row-sm tier-${rowTier.key}"><span class="evo-name">${title}</span>${chips}</div>`;
+      html += megaRowsHtml(stage, e.ivs, true);
     }
     return html;
   }

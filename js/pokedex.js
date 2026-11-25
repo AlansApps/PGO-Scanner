@@ -7,6 +7,9 @@
      pokemon_stats.json  -> base attack / defense / stamina, per form
      pokemon_types.json  -> type(s), per form
      cp_multiplier.json  -> CPM value for every level (1..51, 0.5 steps)
+     pokemon_evolutions.json -> evolution lines
+     mega_pokemon.json   -> Mega Evolution base stats + types (optional:
+                            if it fails to load, only the Mega rows vanish)
 
    Everything is cached in localStorage for CACHE_TTL_MS so the app works
    fast (and mostly offline) after the first load.
@@ -21,7 +24,7 @@
 const Pokedex = (() => {
 
   const API_BASE = 'https://pogoapi.net/api/v1/';
-  const CACHE_KEY = 'pgo-scanner-pokedex-v2'; // v2: + pokemon_evolutions
+  const CACHE_KEY = 'pgo-scanner-pokedex-v3'; // v3: + mega_pokemon (v2: + pokemon_evolutions)
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // refresh weekly
 
   /**
@@ -63,6 +66,9 @@ const Pokedex = (() => {
 
   /** @type {Map<string, Array<object>>} "id|form" -> raw evolution list */
   let evoByKey = new Map();
+
+  /** @type {Map<number, Array<object>>} species id -> Mega Evolution entries */
+  let megaById = new Map();
 
   let loaded = false;
 
@@ -115,8 +121,25 @@ const Pokedex = (() => {
   }
 
   /** Build the in-memory indexes from the raw API payloads. */
-  function buildIndexes(stats, types, cpm, evolutions) {
+  function buildIndexes(stats, types, cpm, evolutions, megas) {
     byName = new Map();
+
+    // Mega Evolutions: own base stats + types, keyed by species id. The
+    // Mega keeps the scanned Pokémon's IVs and uses the standard CP formula
+    // with these base stats. Defensive: skip malformed rows.
+    megaById = new Map();
+    for (const m of megas || []) {
+      const s = m && m.stats;
+      if (!s || !Number.isFinite(s.base_attack) || !Number.isFinite(s.base_defense) || !Number.isFinite(s.base_stamina)) continue;
+      if (!megaById.has(m.pokemon_id)) megaById.set(m.pokemon_id, []);
+      megaById.get(m.pokemon_id).push({
+        id: m.pokemon_id,
+        name: m.mega_name,
+        baseName: m.pokemon_name,
+        base: { attack: s.base_attack, defense: s.base_defense, stamina: s.base_stamina },
+        types: m.type || [],
+      });
+    }
 
     // Evolution lookup by (id, form). Entries may carry gender_required,
     // item_required etc. — kept raw and interpreted at chain-walk time.
@@ -179,7 +202,7 @@ const Pokedex = (() => {
       if (raw) {
         const cached = JSON.parse(raw);
         if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
-          buildIndexes(cached.stats, cached.types, cached.cpm, cached.evolutions);
+          buildIndexes(cached.stats, cached.types, cached.cpm, cached.evolutions, cached.megas);
           return;
         }
       }
@@ -188,18 +211,20 @@ const Pokedex = (() => {
     }
 
     // 2) Fetch fresh data
-    const [stats, types, cpm, evolutions] = await Promise.all([
+    const [stats, types, cpm, evolutions, megas] = await Promise.all([
       fetchJson('pokemon_stats.json'),
       fetchJson('pokemon_types.json'),
       fetchJson('cp_multiplier.json'),
       fetchJson('pokemon_evolutions.json'),
+      // Optional extra: a failure here must not break the core scanner.
+      fetchJson('mega_pokemon.json').catch(() => []),
     ]);
 
-    buildIndexes(stats, types, cpm, evolutions);
+    buildIndexes(stats, types, cpm, evolutions, megas);
 
     // 3) Save cache (best effort — localStorage can be full/blocked)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), stats, types, cpm, evolutions }));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), stats, types, cpm, evolutions, megas }));
     } catch (_) { /* non-fatal */ }
   }
 
@@ -400,6 +425,23 @@ const Pokedex = (() => {
     return out;
   }
 
+  /** Regional forms never have a Mega (e.g. Galarian Slowbro can't Mega). */
+  const REGIONAL_FORMS = new Set(['Alola', 'Alolan', 'Galarian', 'Hisuian', 'Paldea', 'Paldean']);
+
+  /**
+   * Mega Evolutions available to a stage of an evolution line.
+   * Primal Reversions (Kyogre/Groudon) are included under their own
+   * names: Niantic applies the same CP auto-adjust rule to them
+   * (pogo-auditor, 2026-11-25).
+   * @param {object} formEntry - a stats entry (scanned form or evolution)
+   * @returns {Array<{id:number, name:string, base:object, types:string[]}>}
+   *          one entry per Mega (Charizard has X and Y); [] if none
+   */
+  function getMegas(formEntry) {
+    if (!formEntry || REGIONAL_FORMS.has(formEntry.form)) return [];
+    return megaById.get(formEntry.id) || [];
+  }
+
   /**
    * Find type words (e.g. "NORMAL", "Fire") inside raw OCR text.
    * Besides exact word matches, words of >= 4 letters may fuzzy-match a
@@ -452,6 +494,7 @@ const Pokedex = (() => {
     getDistinctForms,
     hasSignificantForms,
     getEvolutionChain,
+    getMegas,
     pickFormByTypes,
     detectTypesInText,
     detectTypeSeparator,
