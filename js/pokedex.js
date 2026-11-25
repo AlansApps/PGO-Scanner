@@ -11,6 +11,11 @@
      mega_pokemon.json   -> Mega Evolution base stats + types (optional:
                             if it fails to load, only the Mega rows vanish)
 
+   PogoAPI's Mega list is STALE (no Staraptor, Mewtwo, Greninja, ...), so
+   PvPoke's community-maintained gamemaster (pokemon.json) is read as a
+   second source: only its RELEASED Mega/Primal entries missing from
+   PogoAPI are added.
+
    Everything is cached in localStorage for CACHE_TTL_MS so the app works
    fast (and mostly offline) after the first load.
 
@@ -24,7 +29,8 @@
 const Pokedex = (() => {
 
   const API_BASE = 'https://pogoapi.net/api/v1/';
-  const CACHE_KEY = 'pgo-scanner-pokedex-v3'; // v3: + mega_pokemon (v2: + pokemon_evolutions)
+  const CACHE_KEY = 'pgo-scanner-pokedex-v4'; // v4: + PvPoke megas (v3: + mega_pokemon, v2: + pokemon_evolutions)
+  const PVPOKE_URL = 'https://raw.githubusercontent.com/pvpoke/pvpoke/master/src/data/gamemaster/pokemon.json';
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // refresh weekly
 
   /**
@@ -120,17 +126,47 @@ const Pokedex = (() => {
     return res.json();
   }
 
+  /**
+   * Extract the RELEASED Mega / Primal entries from PvPoke's gamemaster,
+   * in the same shape as PogoAPI's mega_pokemon.json rows. Only this small
+   * subset is cached (the full gamemaster is >1 MB).
+   * "Staraptor (Mega)" -> "Mega Staraptor", "Charizard (Mega X)" ->
+   * "Mega Charizard X", "Kyogre (Primal)" -> "Primal Kyogre".
+   */
+  function extractPvpokeMegas(gamemaster) {
+    const out = [];
+    for (const p of Array.isArray(gamemaster) ? gamemaster : []) {
+      if (!p || !/_(mega|primal)(_[xy])?$/.test(p.speciesId || '') || p.released !== true) continue;
+      const m = /^(.+?) \((Mega|Primal)(?: ([XY]))?\)$/.exec(p.speciesName || '');
+      if (!m || !p.baseStats) continue;
+      out.push({
+        pokemon_id: p.dex,
+        pokemon_name: m[1],
+        mega_name: `${m[2]} ${m[1]}${m[3] ? ' ' + m[3] : ''}`,
+        stats: { base_attack: p.baseStats.atk, base_defense: p.baseStats.def, base_stamina: p.baseStats.hp },
+        type: (p.types || []).filter((t) => t && t !== 'none').map((t) => t[0].toUpperCase() + t.slice(1)),
+      });
+    }
+    return out;
+  }
+
   /** Build the in-memory indexes from the raw API payloads. */
-  function buildIndexes(stats, types, cpm, evolutions, megas) {
+  function buildIndexes(stats, types, cpm, evolutions, megas, extraMegas) {
     byName = new Map();
 
     // Mega Evolutions: own base stats + types, keyed by species id. The
     // Mega keeps the scanned Pokémon's IVs and uses the standard CP formula
-    // with these base stats. Defensive: skip malformed rows.
+    // with these base stats. PogoAPI rows win; PvPoke rows only fill the
+    // gaps (same species id + same Mega name = already known). Defensive:
+    // skip malformed rows.
     megaById = new Map();
-    for (const m of megas || []) {
+    const seenMega = new Set();
+    for (const m of [...(megas || []), ...(extraMegas || [])]) {
       const s = m && m.stats;
       if (!s || !Number.isFinite(s.base_attack) || !Number.isFinite(s.base_defense) || !Number.isFinite(s.base_stamina)) continue;
+      const key = `${m.pokemon_id}|${normalizeName(m.mega_name || '')}`;
+      if (seenMega.has(key)) continue;
+      seenMega.add(key);
       if (!megaById.has(m.pokemon_id)) megaById.set(m.pokemon_id, []);
       megaById.get(m.pokemon_id).push({
         id: m.pokemon_id,
@@ -202,7 +238,7 @@ const Pokedex = (() => {
       if (raw) {
         const cached = JSON.parse(raw);
         if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
-          buildIndexes(cached.stats, cached.types, cached.cpm, cached.evolutions, cached.megas);
+          buildIndexes(cached.stats, cached.types, cached.cpm, cached.evolutions, cached.megas, cached.extraMegas);
           return;
         }
       }
@@ -211,20 +247,22 @@ const Pokedex = (() => {
     }
 
     // 2) Fetch fresh data
-    const [stats, types, cpm, evolutions, megas] = await Promise.all([
+    const [stats, types, cpm, evolutions, megas, extraMegas] = await Promise.all([
       fetchJson('pokemon_stats.json'),
       fetchJson('pokemon_types.json'),
       fetchJson('cp_multiplier.json'),
       fetchJson('pokemon_evolutions.json'),
       // Optional extra: a failure here must not break the core scanner.
       fetchJson('mega_pokemon.json').catch(() => []),
+      // Second Mega source (PogoAPI's list is stale); also optional.
+      fetch(PVPOKE_URL).then((r) => (r.ok ? r.json() : [])).then(extractPvpokeMegas).catch(() => []),
     ]);
 
-    buildIndexes(stats, types, cpm, evolutions, megas);
+    buildIndexes(stats, types, cpm, evolutions, megas, extraMegas);
 
     // 3) Save cache (best effort — localStorage can be full/blocked)
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), stats, types, cpm, evolutions, megas }));
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ timestamp: Date.now(), stats, types, cpm, evolutions, megas, extraMegas }));
     } catch (_) { /* non-fatal */ }
   }
 
