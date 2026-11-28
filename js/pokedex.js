@@ -29,7 +29,12 @@
 const Pokedex = (() => {
 
   const API_BASE = 'https://pogoapi.net/api/v1/';
-  const CACHE_KEY = 'pgo-scanner-pokedex-v4'; // v4: + PvPoke megas (v3: + mega_pokemon, v2: + pokemon_evolutions)
+  const CACHE_KEY = 'pgo-scanner-pokedex-v5'; // v5: Clefable Mega override (v4: + PvPoke megas, v3: + mega_pokemon, v2: + pokemon_evolutions)
+  // Megas that are live in the game but that PvPoke's gamemaster still
+  // flags released:false (its data lags launches). Mega Clefable debuted
+  // 2026-11-28 (Clefable Super Mega Raid Day). Harmless once PvPoke flips
+  // the flag; remove entries whenever convenient.
+  const RELEASED_MEGA_OVERRIDES = new Set(['clefable_mega']);
   const PVPOKE_URL = 'https://raw.githubusercontent.com/pvpoke/pvpoke/master/src/data/gamemaster/pokemon.json';
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // refresh weekly
 
@@ -136,7 +141,8 @@ const Pokedex = (() => {
   function extractPvpokeMegas(gamemaster) {
     const out = [];
     for (const p of Array.isArray(gamemaster) ? gamemaster : []) {
-      if (!p || !/_(mega|primal)(_[xy])?$/.test(p.speciesId || '') || p.released !== true) continue;
+      if (!p || !/_(mega|primal)(_[xy])?$/.test(p.speciesId || '')) continue;
+      if (p.released !== true && !RELEASED_MEGA_OVERRIDES.has(p.speciesId)) continue;
       const m = /^(.+?) \((Mega|Primal)(?: ([XY]))?\)$/.exec(p.speciesName || '');
       if (!m || !p.baseStats) continue;
       out.push({
