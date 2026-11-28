@@ -13,8 +13,8 @@
 
    PogoAPI's Mega list is STALE (no Staraptor, Mewtwo, Greninja, ...), so
    PvPoke's community-maintained gamemaster (pokemon.json) is read as a
-   second source: only its RELEASED Mega/Primal entries missing from
-   PogoAPI are added.
+   second source: its Mega/Primal entries missing from PogoAPI are added,
+   including ones flagged not yet released.
 
    Everything is cached in localStorage for CACHE_TTL_MS so the app works
    fast (and mostly offline) after the first load.
@@ -29,12 +29,7 @@
 const Pokedex = (() => {
 
   const API_BASE = 'https://pogoapi.net/api/v1/';
-  const CACHE_KEY = 'pgo-scanner-pokedex-v5'; // v5: Clefable Mega override (v4: + PvPoke megas, v3: + mega_pokemon, v2: + pokemon_evolutions)
-  // Megas that are live in the game but that PvPoke's gamemaster still
-  // flags released:false (its data lags launches). Mega Clefable debuted
-  // 2026-11-28 (Clefable Super Mega Raid Day). Harmless once PvPoke flips
-  // the flag; remove entries whenever convenient.
-  const RELEASED_MEGA_OVERRIDES = new Set(['clefable_mega']);
+  const CACHE_KEY = 'pgo-scanner-pokedex-v6'; // v6: all PvPoke megas incl. unreleased (v5: Clefable Mega override (v4: + PvPoke megas, v3: + mega_pokemon, v2: + pokemon_evolutions)
   const PVPOKE_URL = 'https://raw.githubusercontent.com/pvpoke/pvpoke/master/src/data/gamemaster/pokemon.json';
   const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // refresh weekly
 
@@ -132,9 +127,12 @@ const Pokedex = (() => {
   }
 
   /**
-   * Extract the RELEASED Mega / Primal entries from PvPoke's gamemaster,
-   * in the same shape as PogoAPI's mega_pokemon.json rows. Only this small
-   * subset is cached (the full gamemaster is >1 MB).
+   * Extract every Mega / Primal entry from PvPoke's gamemaster, in the
+   * same shape as PogoAPI's mega_pokemon.json rows. The `released` flag is
+   * deliberately IGNORED: PvPoke's flag lags launches (Mega Clefable
+   * debuted 2026-11-28 while still flagged false), and the user wants
+   * not-yet-released Megas calculated too (their stats may be provisional).
+   * Only this small subset is cached (the full gamemaster is >1 MB).
    * "Staraptor (Mega)" -> "Mega Staraptor", "Charizard (Mega X)" ->
    * "Mega Charizard X", "Kyogre (Primal)" -> "Primal Kyogre".
    */
@@ -142,7 +140,6 @@ const Pokedex = (() => {
     const out = [];
     for (const p of Array.isArray(gamemaster) ? gamemaster : []) {
       if (!p || !/_(mega|primal)(_[xy])?$/.test(p.speciesId || '')) continue;
-      if (p.released !== true && !RELEASED_MEGA_OVERRIDES.has(p.speciesId)) continue;
       const m = /^(.+?) \((Mega|Primal)(?: ([XY]))?\)$/.exec(p.speciesName || '');
       if (!m || !p.baseStats) continue;
       out.push({
